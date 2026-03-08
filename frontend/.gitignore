@@ -22,3 +22,18 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Build cache
+.cache
+.temp
+
+# Coverage reports
+coverage
+
+# OS generated files
+Thumbs.db
