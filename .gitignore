@@ -1,0 +1,10 @@
+# Ignore all node_modules in any subfolder
+node_modules/
+# Ignore environment variables
+.env
+# Ignore logs and build artifacts
+*.log
+dist/
+build/
+coverage/
+.DS_Store
