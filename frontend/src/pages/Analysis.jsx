@@ -94,6 +94,25 @@ const TRAP_CHAINS = [
   }
 ];
 
+const PLAYBOOK_RULES = [
+  { id: "p1", rule: "Payment Terms must be Net-60", status: "fail", found: "Immediate upon signing", clauseId: "c3" },
+  { id: "p2", rule: "Governing Law must be California", status: "fail", found: "Delaware", clauseId: "c4" },
+  { id: "p3", rule: "Standard Uptime >= 99.5%", status: "pass", found: "99.9%", clauseId: "c2" },
+];
+
+const MISSING_CLAUSES = [
+  { id: "m1", name: "Force Majeure", description: "Protects you if an unforeseeable event prevents contract fulfillment.", risk: "high" },
+  { id: "m2", name: "Limitation of Liability", description: "Caps the maximum financial damages you could be sued for.", risk: "warning" }
+];
+
+const JARGON_DICT = {
+  "arbitration": "A private process where a neutral person decides a dispute instead of a judge or jury.",
+  "successive": "Following one after another without interruption.",
+  "expressly waived": "An intentional and explicit surrender of a right.",
+  "indemnification": "A promise to pay for the cost of potential damages or losses.",
+  "injunction": "A court order requiring a person to do or cease doing a specific action."
+};
+
 function Analysis() {
   const [selectedClauseId, setSelectedClauseId] = useState("c1");
   const [activeTrapChain, setActiveTrapChain] = useState(null);
@@ -109,6 +128,26 @@ function Analysis() {
       stopSpeaking();
     };
   }, []);
+
+  const generateICS = (title, dateStr) => {
+    const icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:${title}\nDTSTART;VALUE=DATE:${dateStr}\nEND:VEVENT\nEND:VCALENDAR`;
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${title.replace(/\s+/g, '_')}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const renderTextWithJargon = (text) => {
+    let result = text;
+    Object.keys(JARGON_DICT).forEach(jargon => {
+      const regex = new RegExp(`\\b(${jargon})\\b`, 'gi');
+      result = result.replace(regex, `<span class="border-b-2 border-dashed border-indigo-400 text-indigo-900 cursor-help relative group transition-colors hover:bg-indigo-100/50" title="${JARGON_DICT[jargon]}">$1<span class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-800 text-white text-xs p-2.5 rounded-lg min-w-[200px] z-[60] normal-case shadow-xl text-center font-sans font-medium pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-slate-800">${JARGON_DICT[jargon]}</span></span>`);
+    });
+    return <span dangerouslySetInnerHTML={{ __html: result }} />;
+  };
 
   const riskColors = {
     safe: { bg: "bg-emerald-100", border: "border-emerald-300", text: "text-emerald-700", badge: "bg-emerald-500", highlight: "bg-emerald-200/40" },
@@ -207,6 +246,10 @@ function Analysis() {
 
         {/* Global Controls */}
         <div className="flex gap-4">
+          <button className="btn-haptic glass px-4 py-2 rounded-xl flex items-center gap-2 text-white bg-blue-600 font-bold hover:bg-blue-700 hover:shadow-md transition-all border border-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.3)]">
+            <svg className="w-5 h-5 text-blue-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+            Sign Document
+          </button>
           <Link to="/version-compare" className="btn-haptic glass px-4 py-2 rounded-xl flex items-center gap-2 text-slate-700 font-bold hover:bg-white hover:shadow-md transition-all border border-slate-200">
             <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
             Compare Versions
@@ -250,24 +293,42 @@ function Analysis() {
                 const colors = riskColors[clause.risk];
                 
                 return (
-                  <div 
-                    key={clause.id}
-                    onClick={() => handleClauseClick(clause.id)}
-                    className={`relative p-2 -mx-2 rounded-lg cursor-pointer transition-all duration-300
-                      ${isActive ? 'bg-blue-50/80 shadow-[inset_4px_0_0_0_#3b82f6]' : ''}
-                      ${isTrapped ? 'bg-purple-50/80 shadow-[inset_4px_0_0_0_#a855f7] animate-pulse-soft' : ''}
-                      hover:bg-slate-50
-                    `}
-                  >
-                    <span 
-                      className={`
-                        transition-colors duration-200
-                        ${colors.highlight} rounded border-b-2 ${colors.border}
-                        ${(isActive || isTrapped) ? 'font-medium' : ''}
+                  <div key={clause.id} className="relative mb-6">
+                    <div 
+                      onClick={() => handleClauseClick(clause.id)}
+                      className={`relative p-2 -mx-2 rounded-lg cursor-pointer transition-all duration-300
+                        ${isActive ? 'bg-blue-50/80 shadow-[inset_4px_0_0_0_#3b82f6]' : ''}
+                        ${isTrapped ? 'bg-purple-50/80 shadow-[inset_4px_0_0_0_#a855f7] animate-pulse-soft' : ''}
+                        hover:bg-slate-50
                       `}
                     >
-                      {clause.text}
-                    </span>
+                      <span 
+                        className={`
+                          transition-colors duration-200
+                          ${colors.highlight} rounded border-b-2 ${colors.border}
+                          ${(isActive || isTrapped) ? 'font-medium' : ''}
+                        `}
+                      >
+                        {renderTextWithJargon(clause.text)}
+                      </span>
+                    </div>
+                    {/* Inline Comments Mock */}
+                    {isActive && (
+                      <div className="mt-3 ml-4 border-l-2 border-blue-200 pl-4 animate-slide-in-up">
+                        <div className="bg-white p-3 rounded-xl border border-blue-100 shadow-sm mb-2 relative">
+                           <div className="absolute -left-[23px] top-4 w-3 h-3 rounded-full bg-white border-2 border-blue-400 shadow-[0_0_0_2px_#3b82f6]"></div>
+                           <p className="text-xs font-bold text-slate-800 flex justify-between items-center">
+                             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[8px]">S</span> Sarah (Legal)</span> 
+                             <span className="text-slate-400 font-medium">10 mins ago</span>
+                           </p>
+                           <p className="text-sm text-slate-600 mt-1.5 font-sans leading-relaxed">We need to push back on this 90-day notice. 30 days is standard for us.</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <input type="text" placeholder="Type @ to tag team..." className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 flex-1 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 shadow-sm font-sans" />
+                          <button className="bg-blue-600 text-white rounded-lg px-4 py-1.5 text-xs font-bold shadow-sm hover:bg-blue-700 transition-colors btn-haptic">Reply</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -281,7 +342,7 @@ function Analysis() {
           
           {/* Tabs Navigation */}
           <div className="flex bg-slate-200/50 p-1.5 rounded-2xl shadow-inner border border-slate-200 backdrop-blur-sm z-20">
-            {['insights', 'negotiate', 'trackers', 'trust'].map(tab => (
+            {['insights', 'negotiate', 'trackers', 'financials', 'trust'].map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -305,10 +366,16 @@ function Analysis() {
                 {/* File Context & Summary */}
                 <div className="glass rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-bl-full -z-10 transition-transform group-hover:scale-110"></div>
-                  <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    Smart Contract Summary
-                  </h3>
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                      <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      Smart Contract Summary
+                    </h3>
+                    <button className="btn-haptic text-[10px] uppercase font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded-md border border-blue-100 flex items-center gap-1 transition-colors">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                      MP3 Export
+                    </button>
+                  </div>
                   <ul className="space-y-2 text-sm text-slate-700 font-medium">
                     <li className="flex items-start gap-2">
                       <span className="text-rose-500 mt-0.5">•</span> 1-year auto-renewing term requiring 90-day cancellation notice.
@@ -343,6 +410,64 @@ function Analysis() {
                      <h4 className="font-bold text-red-800">Critical Privacy Warning</h4>
                      <p className="text-sm font-medium text-red-700 mt-1">This document contains severe data sharing clauses allowing undetected distribution of user data to third parties.</p>
                    </div>
+                </div>
+
+                {/* Playbook Enforcement */}
+                <div className="glass rounded-2xl p-5 border border-slate-200 shadow-sm animate-slide-in-up" style={{animationDelay: '0.12s'}}>
+                  <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                    Company Playbook
+                  </h3>
+                  <div className="space-y-2">
+                    {PLAYBOOK_RULES.map(rule => (
+                      <div key={rule.id} className="flex justify-between items-center p-2.5 bg-white rounded-lg border border-slate-100 text-sm shadow-sm group hover:border-indigo-200 transition-colors">
+                        <span className="font-medium text-slate-700">{rule.rule}</span>
+                        {rule.status === 'pass' ? (
+                          <span className="text-emerald-700 font-bold text-xs bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">Pass</span>
+                        ) : (
+                          <span className="text-rose-700 font-bold text-xs bg-rose-50 px-2 py-1 rounded-md border border-rose-100 cursor-help" title={`Found: ${rule.found}`}>Fail</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Missing Protective Clauses */}
+                <div className="glass rounded-2xl p-5 border border-slate-200 shadow-sm animate-slide-in-up" style={{animationDelay: '0.15s'}}>
+                  <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    Missing Protective Clauses
+                  </h3>
+                  <div className="space-y-3">
+                    {MISSING_CLAUSES.map(mc => (
+                      <div key={mc.id} className="flex gap-3 items-start p-3 bg-white rounded-xl border border-slate-100 shadow-sm hover:border-blue-200 transition-colors">
+                        <div className={`mt-0.5 w-2.5 h-2.5 rounded-full flex-shrink-0 ${mc.risk === 'high' ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]'} animate-pulse-soft`}></div>
+                        <div>
+                          <p className="font-bold text-sm text-slate-800">{mc.name}</p>
+                          <p className="text-xs text-slate-500 mt-0.5 font-medium">{mc.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Regional Compliance */}
+                <div className="glass rounded-2xl p-4 border border-blue-200 shadow-sm animate-slide-in-up flex justify-between items-center bg-gradient-to-r from-blue-50/50 to-transparent" style={{animationDelay: '0.18s'}}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 shadow-inner">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-800">Regional Compliance</h4>
+                      <p className="text-xs text-slate-500 mt-0.5">Checking GDPR & CCPA</p>
+                    </div>
+                  </div>
+                  <div>
+                    <span className="bg-rose-100 text-rose-700 text-[10px] uppercase tracking-wider font-bold px-2.5 py-1.5 rounded-md border border-rose-200 flex items-center gap-1.5 shadow-sm">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                      Fails GDPR
+                    </span>
+                  </div>
                 </div>
 
                 {/* Trap Chain Detector */}
@@ -463,6 +588,10 @@ function Analysis() {
                       <button className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition-colors btn-haptic text-sm">
                         Copy Suggestion to Clipboard
                       </button>
+                      <button className="w-full py-2.5 bg-white border-2 border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 font-bold rounded-xl shadow-sm transition-colors btn-haptic text-sm flex items-center justify-center gap-2 mt-2">
+                        <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        Export Redlined DOCX
+                      </button>
                     </div>
                   ) : (
                     <div className="bg-white/50 p-6 rounded-xl border border-indigo-100 border-dashed text-center">
@@ -490,7 +619,10 @@ function Analysis() {
                       </div>
                       <div className="text-right">
                         <p className="text-amber-600 font-bold text-sm">Oct 1, 2026</p>
-                        <button className="text-[10px] uppercase font-bold text-blue-600 hover:text-blue-800 tracking-wider mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Add to Calendar</button>
+                        <button onClick={() => generateICS("Renewal Cancellation Notice", "20261001")} className="text-[10px] uppercase font-bold text-blue-600 hover:text-blue-800 tracking-wider mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end gap-1 w-full ml-auto">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                          Add to Calendar
+                        </button>
                       </div>
                     </div>
                     
@@ -501,8 +633,56 @@ function Analysis() {
                       </div>
                       <div className="text-right">
                         <p className="text-slate-600 font-bold text-sm">Upon Execution</p>
+                        <button onClick={() => generateICS("First Payment Due", "20260310")} className="text-[10px] uppercase font-bold text-blue-600 hover:text-blue-800 tracking-wider mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end gap-1 w-full ml-auto">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                          Add to Calendar
+                        </button>
                       </div>
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* --- TAB: FINANCIALS --- */}
+            {activeTab === 'financials' && (
+              <div className="space-y-6 animate-fade-in">
+                <div className="glass rounded-2xl p-5 border border-emerald-200 shadow-sm bg-gradient-to-br from-white to-emerald-50/20">
+                  <h3 className="font-bold text-emerald-900 mb-4 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Financial Impact Visualizer
+                  </h3>
+                  <p className="text-sm text-slate-600 mb-6 font-medium">Estimated 36-month cost exposure including base fees and early cancellation penalties.</p>
+                  
+                  {/* Mock Bar Chart */}
+                  <div className="h-48 flex items-end justify-between gap-4 px-2 border-b-2 border-l-2 border-slate-200 pt-6 pb-0 relative ml-8">
+                    {/* Y-axis labels */}
+                    <div className="absolute -left-10 top-0 bottom-0 flex flex-col justify-between text-[10px] text-slate-400 font-bold py-1">
+                      <span>$150k</span>
+                      <span>$100k</span>
+                      <span>$50k</span>
+                      <span>$0</span>
+                    </div>
+
+                    {[ 
+                      { year: 'Yr 1', base: 40, penalty: 80 },
+                      { year: 'Yr 2', base: 60, penalty: 40 },
+                      { year: 'Yr 3', base: 80, penalty: 0 }
+                    ].map((data, i) => (
+                      <div key={i} className="flex-1 flex flex-col justify-end items-center group relative h-full pt-4">
+                        <div className="w-full max-w-[48px] bg-rose-400/80 rounded-t-sm transition-all duration-300 group-hover:bg-rose-500 relative shadow-inner isolate border-b border-white/20" style={{ height: `${data.penalty}%` }}>
+                          <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-white px-1.5 py-0.5 rounded shadow-sm border border-rose-100 z-10">Penalty</span>
+                        </div>
+                        <div className="w-full max-w-[48px] bg-emerald-400/80 rounded-b-sm transition-all duration-300 group-hover:bg-emerald-500 relative shadow-inner isolate border-t border-emerald-500/20" style={{ height: `${data.base}%` }}>
+                          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] font-bold text-white opacity-0 group-hover:opacity-100 transition-opacity z-10">Base</span>
+                        </div>
+                        <span className="absolute -bottom-6 text-xs font-bold text-slate-600">{data.year}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-10 flex justify-center gap-6 text-xs font-bold">
+                    <div className="flex items-center gap-2 text-emerald-700"><span className="w-3 h-3 bg-emerald-400 rounded-sm shadow-sm"></span> Base Fees</div>
+                    <div className="flex items-center gap-2 text-rose-700"><span className="w-3 h-3 bg-rose-400 rounded-sm shadow-sm"></span> Max Cancellation Penalty</div>
                   </div>
                 </div>
               </div>
@@ -528,7 +708,33 @@ function Analysis() {
                     </div>
                   </div>
                   
-                  <h4 className="text-xs uppercase tracking-widest font-bold text-slate-400 mb-3">Crowd Risk Intelligence</h4>
+                  <h4 className="text-xs uppercase tracking-widest font-bold text-slate-400 mb-3 mt-8">Industry Benchmarking</h4>
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <div className="mb-2">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-bold text-slate-700">Cancellation Notice Period</span>
+                        <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-100 shadow-sm">90 Days (This Contract)</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-3 relative mt-6 border border-slate-200 shadow-inner">
+                        <div className="bg-blue-200 h-full absolute left-0 rounded-l-full" style={{ width: '30%' }}></div>
+                        <div className="bg-blue-400 h-full absolute left-[30%]" style={{ width: '30%' }}></div>
+                        <div className="bg-blue-600/30 h-full absolute left-[60%] rounded-r-full" style={{ width: '40%' }}></div>
+                        
+                        <div className="absolute top-1/2 -translate-y-1/2 w-2 h-5 bg-rose-500 rounded-full shadow-md border border-white" style={{ left: '90%' }}></div>
+                        
+                        <div className="absolute -top-6 left-[30%] -translate-x-1/2 flex flex-col items-center">
+                          <span className="text-[10px] font-bold text-slate-500 bg-white px-1 shadow-sm rounded border border-slate-200">30d (Avg)</span>
+                          <div className="w-px h-2 bg-slate-300 mt-0.5"></div>
+                        </div>
+                        <div className="absolute -top-6 left-[60%] -translate-x-1/2 flex flex-col items-center">
+                          <span className="text-[10px] font-bold text-slate-400">60d</span>
+                          <div className="w-px h-2 bg-slate-300 mt-0.5"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <h4 className="text-xs uppercase tracking-widest font-bold text-slate-400 mb-3 mt-8">Crowd Risk Intelligence</h4>
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
                     <div className="flex gap-4 items-center">
                       <div className="flex -space-x-2">

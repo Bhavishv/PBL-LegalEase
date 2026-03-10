@@ -1,4 +1,11 @@
+import { Link } from "react-router-dom";
 import UploadContract from "../components/UploadContract";
+
+const RECENT_CONTRACTS = [
+  { id: 1, name: "SaaS_Subscription_Agreement.pdf", date: "Today, 10:45 AM", risk: "high", status: "Review Required" },
+  { id: 2, name: "Acme_Corp_NDA_2026.docx", date: "Yesterday, 2:30 PM", risk: "safe", status: "Approved" },
+  { id: 3, name: "Office_Lease_Renewal.pdf", date: "Mar 8, 2026", risk: "warning", status: "In Negotiation" },
+];
 
 function Dashboard() {
   return (
@@ -19,52 +26,94 @@ function Dashboard() {
         <UploadContract />
       </div>
 
-      <div className="mt-12 p-6 glass rounded-2xl shadow-sm hover:shadow-glow-hover transition-haptic animate-slide-in-up relative z-10" style={{ animationDelay: "0.2s" }}>
-        <div className="flex items-start gap-4">
-          <div className="flex-shrink-0 mt-1">
-            <svg className="w-6 h-6 text-indigo-600 animate-pulse-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+      <div className="mt-12 grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 relative z-10 animate-slide-in-up" style={{ animationDelay: "0.2s" }}>
+        
+        {/* Left Col: Contract Vault */}
+        <div className="lg:col-span-2 glass rounded-2xl shadow-sm p-6 flex flex-col h-full border border-slate-200">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+              Contract Vault
+            </h2>
+            <button className="text-sm font-bold text-blue-600 hover:text-blue-800 transition-colors">View All</button>
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-bold text-indigo-900 mb-1 tracking-wide uppercase">Coming soon</p>
-            <p className="text-sm text-indigo-800 font-medium">
-              Analysis results, risk highlighting, and plain English explanations will appear here after processing your contract.
-            </p>
+          
+          <div className="flex-1 overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="pb-3 px-2 text-xs font-bold text-slate-400 uppercase tracking-widest leading-none">Document</th>
+                  <th className="pb-3 px-2 text-xs font-bold text-slate-400 uppercase tracking-widest leading-none">Uploaded</th>
+                  <th className="pb-3 px-2 text-xs font-bold text-slate-400 uppercase tracking-widest leading-none">Risk</th>
+                  <th className="pb-3 px-2 text-xs font-bold text-slate-400 uppercase tracking-widest leading-none text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="text-sm">
+                {RECENT_CONTRACTS.map((contract) => (
+                  <tr key={contract.id} className="border-b border-slate-100 last:border-b-0 group hover:bg-slate-50/50 transition-colors">
+                    <td className="py-4 px-2 font-bold text-slate-800 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 border border-blue-100 group-hover:bg-white transition-colors">
+                        <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      </div>
+                      <Link to="/analysis" className="hover:text-blue-600 transition-colors truncate max-w-[150px] sm:max-w-xs block" title={contract.name}>{contract.name}</Link>
+                    </td>
+                    <td className="py-4 px-2 text-slate-500 font-medium whitespace-nowrap">{contract.date}</td>
+                    <td className="py-4 px-2 whitespace-nowrap">
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-bold border
+                        ${contract.risk === 'high' ? 'bg-rose-50 text-rose-700 border-rose-100' : ''}
+                        ${contract.risk === 'warning' ? 'bg-amber-50 text-amber-700 border-amber-100' : ''}
+                        ${contract.risk === 'safe' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : ''}
+                      `}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${contract.risk === 'high' ? 'bg-rose-500' : contract.risk === 'warning' ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
+                        {contract.risk === 'high' ? 'High' : contract.risk === 'warning' ? 'Medium' : 'Low'}
+                      </span>
+                    </td>
+                    <td className="py-4 px-2 text-right">
+                      <span className="text-sm font-bold text-slate-600 whitespace-nowrap">{contract.status}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
 
-      {/* Feature highlights */}
-      <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 relative z-10">
-        <div className="p-6 glass rounded-2xl hover:shadow-glow-hover transition-haptic group animate-slide-in-up" style={{ animationDelay: "0.3s" }}>
-          <div className="w-12 h-12 bg-blue-100/80 rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 group-hover:bg-blue-200/80 transition-transform duration-300">
-            <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-            </svg>
+        {/* Right Col: Overall Exposure */}
+        <div className="glass rounded-2xl shadow-sm p-6 border border-slate-200 flex flex-col">
+          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 mb-6">
+            <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" /></svg>
+            Company Exposure
+          </h2>
+          
+          <div className="flex-1 flex flex-col justify-center items-center gap-6">
+            <div className="relative w-32 h-32 rounded-full border-8 border-slate-100 flex items-center justify-center">
+              {/* Fake donut chart ring */}
+              <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                <circle cx="50%" cy="50%" r="46%" stroke="currentColor" strokeWidth="8" fill="none" className="text-emerald-500" strokeDasharray="100 200" strokeLinecap="round" />
+                <circle cx="50%" cy="50%" r="46%" stroke="currentColor" strokeWidth="8" fill="none" className="text-amber-500" strokeDasharray="30 200" strokeDashoffset="-100" strokeLinecap="round" />
+                <circle cx="50%" cy="50%" r="46%" stroke="currentColor" strokeWidth="8" fill="none" className="text-rose-500" strokeDasharray="20 200" strokeDashoffset="-130" strokeLinecap="round" />
+              </svg>
+              <div className="text-center z-10">
+                <div className="text-3xl font-extrabold text-slate-800">42</div>
+                <div className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mt-0.5">Active</div>
+              </div>
+            </div>
+            
+            <div className="w-full space-y-3">
+              <div className="flex justify-between items-center text-sm">
+                <span className="flex items-center gap-2 text-slate-600 font-medium"><span className="w-3 h-3 rounded-full bg-emerald-500"></span> Safe (122)</span>
+                <span className="font-bold text-slate-800">76%</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="flex items-center gap-2 text-slate-600 font-medium"><span className="w-3 h-3 rounded-full bg-amber-500"></span> Warning (28)</span>
+                <span className="font-bold text-slate-800">18%</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="flex items-center gap-2 text-slate-600 font-medium"><span className="w-3 h-3 rounded-full bg-rose-500"></span> High Risk (10)</span>
+                <span className="font-bold text-slate-800">6%</span>
+              </div>
+            </div>
           </div>
-          <h3 className="text-lg font-bold text-slate-900 mb-2">Smart Analysis</h3>
-          <p className="text-sm text-slate-600 font-medium">Advanced AI analyzes contracts for hidden risks and unfavorable terms seamlessly.</p>
-        </div>
-
-        <div className="p-6 glass rounded-2xl hover:shadow-glow-hover transition-haptic group animate-slide-in-up" style={{ animationDelay: "0.4s" }}>
-          <div className="w-12 h-12 bg-emerald-100/80 rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 group-hover:bg-emerald-200/80 transition-transform duration-300">
-            <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-bold text-slate-900 mb-2">Clear Results</h3>
-          <p className="text-sm text-slate-600 font-medium">Get easy-to-understand explanations of risks translated into plain English.</p>
-        </div>
-
-        <div className="p-6 glass rounded-2xl hover:shadow-glow-hover transition-haptic group animate-slide-in-up" style={{ animationDelay: "0.5s" }}>
-          <div className="w-12 h-12 bg-purple-100/80 rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 group-hover:bg-purple-200/80 transition-transform duration-300">
-            <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-bold text-slate-900 mb-2">Protected</h3>
-          <p className="text-sm text-slate-600 font-medium">Your documents are secure, analyzed, and processed with complete confidentiality.</p>
         </div>
       </div>
     </div>

@@ -7,7 +7,27 @@ function ContractChatbot() {
   ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef(null);
+
+  const toggleListening = (e) => {
+    e.preventDefault();
+    if (isListening) return;
+    setIsListening(true);
+    setInput("");
+    
+    let text = "What does clause 4 mean?";
+    let currentIndex = 0;
+    
+    const interval = setInterval(() => {
+      setInput(text.substring(0, currentIndex + 1));
+      currentIndex++;
+      if (currentIndex === text.length) {
+        clearInterval(interval);
+        setTimeout(() => setIsListening(false), 500);
+      }
+    }, 50);
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -119,9 +139,17 @@ function ContractChatbot() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask a question..."
-              className="flex-1 bg-slate-100 text-slate-800 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium"
+              placeholder={isListening ? "Listening..." : "Ask a question..."}
+              className={`flex-1 text-slate-800 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium ${isListening ? 'bg-rose-50 placeholder-rose-400' : 'bg-slate-100'}`}
             />
+            <button
+               type="button"
+               onClick={toggleListening}
+               className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors btn-haptic ${isListening ? 'bg-rose-100 text-rose-600 animate-pulse' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+               title="Voice Input"
+             >
+               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+             </button>
             <button
               type="submit"
               disabled={!input.trim()}
