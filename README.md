@@ -218,11 +218,3 @@ The system has the potential to evolve into a **consumer protection AI assistant
 This project is currently being developed as part of a **Project-Based Learning (PBL) initiative**.
 
 ---
-
-If you want, I can also give you **one more powerful GitHub section most students miss**:
-
-* **System Architecture Diagram**
-* **Project Folder Structure**
-* **How the AI pipeline works**
-
-Adding those will make your repo look **10× more professional**.
