@@ -33,22 +33,55 @@ sys.path.insert(0, str(BACKEND_DIR))
 from cuad_label_mapper import get_risk_level
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 1. LOAD CUAD DATASET
-# ══════════════════════════════════════════════════════════════════════════════
+# ── CUAD JSON download URL (Squad-format, no PDFs needed) ────────────────────
+CUAD_JSON_URL = (
+    "https://huggingface.co/datasets/theatticusproject/cuad/resolve/main/"
+    "CUAD_v1.json"
+)
+CUAD_JSON_CACHE = MODELS_DIR / "CUAD_v1.json"
 
-def load_cuad():
-    """Download (or load from cache) the CUAD dataset via HuggingFace datasets."""
-    print("📥 Loading CUAD dataset from HuggingFace (cached after first run)…")
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        print("ERROR: 'datasets' package not installed. Run: pip install datasets")
-        sys.exit(1)
 
-    ds = load_dataset("theatticusproject/cuad", trust_remote_code=True)
-    print(f"   ✓ Loaded: {len(ds['train'])} train examples, {len(ds['test'])} test examples")
-    return ds
+def load_cuad() -> list:
+    """
+    Download (or use cached) the pre-processed CUAD_v1.json in SQuAD format.
+    Returns a flat list of QA paragraph dicts with keys:
+      context, question, answers (dict with 'text' list)
+    """
+    import json, urllib.request
+
+    if not CUAD_JSON_CACHE.exists():
+        print(f"📥 Downloading CUAD_v1.json (~25 MB) from HuggingFace…")
+        try:
+            urllib.request.urlretrieve(CUAD_JSON_URL, CUAD_JSON_CACHE)
+            print(f"   ✓ Saved to {CUAD_JSON_CACHE}")
+        except Exception as exc:
+            print(f"ERROR: Could not download CUAD JSON: {exc}")
+            print(f"       Please download manually from:\n       {CUAD_JSON_URL}")
+            print(f"       and save to: {CUAD_JSON_CACHE}")
+            sys.exit(1)
+    else:
+        print(f"📥 Using cached CUAD_v1.json from {CUAD_JSON_CACHE}")
+
+    with open(CUAD_JSON_CACHE, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+
+    # SQuAD format: data → list of {title, paragraphs → [{context, qas}]}
+    examples = []
+    for doc in raw.get("data", []):
+        for para in doc.get("paragraphs", []):
+            context = para.get("context", "")
+            for qa in para.get("qas", []):
+                question = qa.get("question", "")
+                answers_raw = qa.get("answers", [])
+                answer_texts = [a["text"] for a in answers_raw] if answers_raw else []
+                examples.append({
+                    "context":  context,
+                    "question": question,
+                    "answers":  {"text": answer_texts},
+                })
+
+    print(f"   ✓ Loaded {len(examples):,} QA examples from {len(raw.get('data', []))} contracts")
+    return examples
 
 
 # ══════════════════════════════════════════════════════════════════════════════
