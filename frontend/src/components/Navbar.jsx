@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const isDashboard = location.pathname === "/dashboard";
+  const isAuthenticated = ["/dashboard", "/analysis", "/version-compare", "/crowd-intel"].includes(location.pathname);
 
   const handleSignOut = () => {
     // Later: clear auth state
@@ -32,7 +32,7 @@ function Navbar() {
             >
               Home
             </Link>
-            {isDashboard ? (
+            {isAuthenticated ? (
               <>
                 <Link
                   to="/dashboard"

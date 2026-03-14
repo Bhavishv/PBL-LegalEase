@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Toast from "./Toast";
+import { uploadContract } from "../services/api";
 
 const ACCEPTED_TYPES = ".pdf,.doc,.docx,.png,.jpg,.jpeg";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -71,35 +72,54 @@ function UploadContract() {
     setIsUploading(true);
     setError(null);
     setUploadProgress(0);
-    setUploadStatusText("Extracting Text (OCR)...");
+    setUploadStatusText("Uploading document...");
+
+    // Animate the progress bar while the real API call is running
+    let currentProgress = 10;
+    setUploadProgress(currentProgress);
+
+    const progressSteps = [
+      { pct: 25, label: "Extracting Text (OCR)..." },
+      { pct: 50, label: "Running NLP Clause Detection..." },
+      { pct: 70, label: "Matching Knowledge Base (RAG)..." },
+      { pct: 85, label: "Finalizing Risk Score..." },
+    ];
+
+    let stepIndex = 0;
+    const progressInterval = setInterval(() => {
+      if (stepIndex < progressSteps.length) {
+        const { pct, label } = progressSteps[stepIndex];
+        setUploadProgress(pct);
+        setUploadStatusText(label);
+        stepIndex++;
+      } else {
+        clearInterval(progressInterval);
+      }
+    }, 800);
 
     try {
-      // Simulate intelligent processing
-      await new Promise(r => setTimeout(r, 600));
-      setUploadProgress(30);
-      setUploadStatusText("Running NLP Clause Detection...");
-      
-      await new Promise(r => setTimeout(r, 600));
-      setUploadProgress(60);
-      setUploadStatusText("Matching Knowledge Base (RAG)...");
-      
-      await new Promise(r => setTimeout(r, 600));
-      setUploadProgress(90);
-      setUploadStatusText("Finalizing Risk Score...");
-      
-      await new Promise(r => setTimeout(r, 400));
-      
-      setSuccess(true);
+      const result = await uploadContract(file);
+
+      clearInterval(progressInterval);
       setUploadProgress(100);
+      setUploadStatusText("Analysis complete!");
+
+      // Persist result for Analysis page to consume
+      sessionStorage.setItem("legalease_analysis", JSON.stringify(result));
+
+      setSuccess(true);
       showToast(`Successfully analyzed ${file.name}!`, "success");
-      
+
       setTimeout(() => {
         navigate("/analysis");
       }, 1500);
     } catch (err) {
-      showToast("Analysis failed. Please try again.", "error");
-      setError("Analysis failed. Please try again.");
+      clearInterval(progressInterval);
+      const msg = err.message || "Analysis failed. Please try again.";
+      showToast(msg, "error");
+      setError(msg);
       setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 

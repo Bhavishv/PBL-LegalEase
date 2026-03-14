@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import ContractChatbot from "../components/ContractChatbot";
 
@@ -118,14 +118,78 @@ function Analysis() {
   const [activeTrapChain, setActiveTrapChain] = useState(null);
   const [language, setLanguage] = useState("en");
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [activeTab, setActiveTab] = useState("insights"); // New Tabs State
+  const [activeTab, setActiveTab] = useState("insights");
+
+  // Live API data state (overrides mock when available)
+  const [liveClauses, setLiveClauses] = useState(null); // null = use mock
+  const [liveTrapChains, setLiveTrapChains] = useState(null);
+  const [liveScore, setLiveScore] = useState(null);
+  const [liveRiskLabel, setLiveRiskLabel] = useState(null);
+  const [liveFilename, setLiveFilename] = useState(null);
+  const [isLiveData, setIsLiveData] = useState(false);
   
   const speechRef = useRef(null);
-  
-  // Clean up speech synthesis on unmount to prevent memory leaks/zombie audio
+
+  // Map API risk_level to UI risk string
+  const mapRiskLevel = useCallback((level) => {
+    if (level === "high-risk") return "high";
+    return level; // "warning" | "safe" pass through
+  }, []);
+
+  // On mount: try to load real analysis data from sessionStorage
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("legalease_analysis");
+      if (raw) {
+        const data = JSON.parse(raw);
+        // Map API clauses → UI clause format
+        const mapped = (data.clauses || []).map((c) => ({
+          id: c.id,
+          text: c.text,
+          risk: mapRiskLevel(c.risk_level),
+          title: c.matched_kb_id
+            ? c.matched_kb_id.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+            : `Clause (${c.risk_level})`,
+          explanation: c.explanation,
+          translations: {}, // backend doesn't return translations
+        }));
+
+        // Map API trap_chains → UI format (add a placeholder icon)
+        const trapIcon = (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        );
+        const mappedTraps = (data.trap_chains || []).map((tc, i) => ({
+          id: `tc${i + 1}`,
+          name: tc.name,
+          description: tc.description,
+          clauses: [], // backend doesn't return per-clause IDs for traps
+          impact: tc.matched_keywords?.join(", ") || "Risk Detected",
+          icon: trapIcon,
+        }));
+
+        if (mapped.length > 0) {
+          setLiveClauses(mapped);
+          setLiveTrapChains(mappedTraps);
+          setLiveScore(data.overall_score);
+          setLiveRiskLabel(data.risk_label);
+          setLiveFilename(data.filename);
+          setIsLiveData(true);
+          setSelectedClauseId(mapped[0]?.id || "c1");
+        }
+      }
+    } catch (e) {
+      console.warn("Could not parse session analysis data:", e);
+    }
+  }, [mapRiskLevel]);
+
+  // Clean up speech synthesis on unmount
   useEffect(() => {
     return () => {
-      stopSpeaking();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
     };
   }, []);
 
@@ -155,7 +219,14 @@ function Analysis() {
     high: { bg: "bg-rose-100", border: "border-rose-300", text: "text-rose-700", badge: "bg-rose-500", highlight: "bg-rose-200/40" }
   };
 
-  const selectedClause = CONTRACT_CLAUSES.find((c) => c.id === selectedClauseId);
+  // Use live clauses when available, otherwise fall back to mock
+  const ACTIVE_CLAUSES = liveClauses || CONTRACT_CLAUSES;
+  const ACTIVE_TRAPS = liveTrapChains || TRAP_CHAINS;
+  const ACTIVE_SCORE = liveScore !== null ? liveScore : 78;
+  const ACTIVE_RISK_LABEL = liveRiskLabel || "High Risk";
+  const ACTIVE_FILENAME = liveFilename || "SaaS_Subscription_Agreement.pdf";
+
+  const selectedClause = ACTIVE_CLAUSES.find((c) => c.id === selectedClauseId);
 
   const handleClauseClick = (id) => {
     setSelectedClauseId(id);
@@ -221,7 +292,7 @@ function Analysis() {
 
   const isClauseHighlightedInTrap = (id) => {
     if (!activeTrapChain) return false;
-    const trap = TRAP_CHAINS.find(tc => tc.id === activeTrapChain);
+    const trap = ACTIVE_TRAPS.find(tc => tc.id === activeTrapChain);
     return trap?.clauses.includes(id);
   };
 
@@ -240,7 +311,8 @@ function Analysis() {
           </div>
           <p className="text-slate-500 font-medium flex items-center gap-2">
             <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-            SaaS_Subscription_Agreement.pdf
+            {ACTIVE_FILENAME}
+            {isLiveData && <span className="ml-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">✓ Live Analysis</span>}
           </p>
         </div>
 
@@ -257,10 +329,14 @@ function Analysis() {
           <div className="glass px-6 py-2 rounded-xl flex items-center gap-4 shadow-sm border border-rose-100">
             <div>
               <p className="text-xs uppercase tracking-widest font-bold text-slate-500">Risk Score</p>
-              <p className="text-sm font-bold text-rose-600 mt-1">High Risk</p>
+              <p className="text-sm font-bold text-rose-600 mt-1">{ACTIVE_RISK_LABEL}</p>
             </div>
-            <div className="relative w-12 h-12 rounded-full flex items-center justify-center bg-rose-50 border-[3px] border-rose-500 text-rose-600 font-bold text-lg shadow-[0_0_15px_rgba(244,63,94,0.3)] animate-pulse-soft">
-              78
+            <div className={`relative w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg shadow-[0_0_15px_rgba(244,63,94,0.3)] animate-pulse-soft border-[3px] ${
+              ACTIVE_SCORE >= 85 ? "bg-emerald-50 border-emerald-500 text-emerald-600" :
+              ACTIVE_SCORE >= 65 ? "bg-amber-50 border-amber-400 text-amber-600" :
+              "bg-rose-50 border-rose-500 text-rose-600"
+            }`}>
+              {ACTIVE_SCORE}
             </div>
           </div>
         </div>
@@ -284,13 +360,15 @@ function Analysis() {
           </div>
           
           <div className="p-6 md:p-8 overflow-y-auto flex-1 font-serif text-slate-800 leading-loose text-base md:text-lg selection:bg-blue-200 scroll-smooth">
-            <h3 className="font-bold text-2xl md:text-3xl mb-8 mt-2 text-center uppercase tracking-wide text-slate-900 filter drop-shadow-sm">Software as a Service Agreement</h3>
+            <h3 className="font-bold text-2xl md:text-3xl mb-8 mt-2 text-center uppercase tracking-wide text-slate-900 filter drop-shadow-sm">
+              {isLiveData ? ACTIVE_FILENAME.replace(/\.[^.]+$/, "").replace(/[_-]/g, " ") : "Software as a Service Agreement"}
+            </h3>
             
             <div className="space-y-6 lg:space-y-8">
-              {CONTRACT_CLAUSES.map(clause => {
+              {ACTIVE_CLAUSES.map(clause => {
                 const isActive = selectedClauseId === clause.id;
                 const isTrapped = isClauseHighlightedInTrap(clause.id);
-                const colors = riskColors[clause.risk];
+                const colors = riskColors[clause.risk] || riskColors.warning;
                 
                 return (
                   <div key={clause.id} className="relative mb-6">
@@ -479,7 +557,7 @@ function Analysis() {
                     </h2>
                   </div>
                   <div className="p-3 bg-white/40">
-                    {TRAP_CHAINS.map(chain => (
+                    {ACTIVE_TRAPS.length > 0 ? ACTIVE_TRAPS.map(chain => (
                       <button 
                         key={chain.id}
                         onClick={() => handleTrapChainClick(chain.id)}
@@ -498,7 +576,9 @@ function Analysis() {
                           </div>
                         </div>
                       </button>
-                    ))}
+                                      )) : (
+                    <div className="p-4 text-center text-sm text-slate-400 font-medium">No trap chains detected ✓</div>
+                  )}
                   </div>
                 </div>
 
@@ -550,11 +630,20 @@ function Analysis() {
                       </div>
                     </>
                   ) : (
-                    <div className="p-8 flex-1 flex flex-col items-center justify-center text-center opacity-70">
-                      <svg className="w-8 h-8 text-slate-300 mb-2 animate-bounce-custom" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" /></svg>
-                      <p className="text-sm font-bold text-slate-400">Select a clause to translate</p>
-                    </div>
-                  )}
+                  <>
+                    {isLiveData ? (
+                      <div className="p-8 flex-1 flex flex-col items-center justify-center text-center opacity-70">
+                        <svg className="w-8 h-8 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" /></svg>
+                        <p className="text-sm font-bold text-slate-400">Select a clause in the document viewer</p>
+                      </div>
+                    ) : (
+                      <div className="p-8 flex-1 flex flex-col items-center justify-center text-center opacity-70">
+                        <svg className="w-8 h-8 text-slate-300 mb-2 animate-bounce-custom" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" /></svg>
+                        <p className="text-sm font-bold text-slate-400">Select a clause to translate</p>
+                      </div>
+                    )}
+                  </>
+                )}
                 </div>
               </div>
             )}

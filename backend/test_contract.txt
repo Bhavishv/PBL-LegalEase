@@ -1,0 +1,16 @@
+SERVICE AGREEMENT
+
+1. Term and Termination
+This Agreement shall commence on the Effective Date and shall automatically renew for successive one-year terms unless either party provides written notice of its intent not to renew at least ninety (90) days prior to the expiration of the then-current term.
+
+2. Payment and Cancellation Fee
+Customer shall pay all fees specified in the Order Form. If Customer terminates this Agreement early, Customer shall immediately pay all remaining fees that would have been due for the entirety of the intended term, including a cancellation fee equal to 100% of the remaining contract value.
+
+3. Dispute Resolution
+Any dispute arising out of this Agreement shall be settled exclusively by binding arbitration in the state of Delaware. Customer expressly waives the right to a jury trial and the right to participate in any class action lawsuit.
+
+4. Data Privacy
+Provider may collect, use, and share Customer data with third-party marketing partners and analytics providers for any commercial purpose without providing direct notification to Customer.
+
+5. Service Uptime
+Provider guarantees ninety-nine point nine percent (99.9%) platform uptime, excluding scheduled maintenance windows communicated at least 24 hours in advance.
