@@ -257,29 +257,24 @@ def main():
     print(" LegalEase — CUAD Classifier Training Script")
     print("=" * 65)
 
-    # 1. Load
+    # 1. Load  (returns a flat list of QA dicts)
     ds = load_cuad()
 
-    # 2. Build dataset from train split
+    # 2. Build dataset — ds is a list, pass it directly
     print("\n📝 Building training corpus from CUAD examples…")
-    all_texts, all_labels = [], []
-    for split_name in ds.keys():
-        t, l = build_dataset(ds[split_name])
-        all_texts.extend(t)
-        all_labels.extend(l)
+    all_texts, all_labels = build_dataset(ds)
 
     # Class distribution before balancing
     from collections import Counter
     print(f"\n   Raw class distribution: {dict(Counter(all_labels))}")
 
-    # 3. Balance
-    texts, labels = balance_classes(all_texts, all_labels, max_per_class=5000)
-    from collections import Counter
-    print(f"   Balanced distribution : {dict(Counter(labels))}")
-
-    if len(texts) < 50:
+    if len(all_texts) < 50:
         print("ERROR: Too few examples extracted. Check dataset format.")
         sys.exit(1)
+
+    # 3. Balance
+    texts, labels = balance_classes(all_texts, all_labels, max_per_class=5000)
+    print(f"   Balanced distribution : {dict(Counter(labels))}")
 
     # 4. Train
     clf, le = train(texts, labels)
