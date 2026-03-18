@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import Toast from "./Toast";
+import ScannerModal from "./ScannerModal";
 
 const ACCEPTED_TYPES = ".pdf,.doc,.docx,.png,.jpg,.jpeg";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -12,9 +13,25 @@ function UploadContract() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [success, setSuccess] = useState(false);
   const [toast, setToast] = useState(null);
+  const [showScanner, setShowScanner] = useState(false);
 
   const showToast = (message, type = "info") => {
     setToast({ message, type });
+  };
+
+  const handleScanComplete = async (imageUrl) => {
+    try {
+      showToast("Fetching scanned document...", "info");
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      // create a file object
+      const ext = imageUrl.split('.').pop() || 'jpg';
+      const scannedFile = new File([blob], `scanned_document_${Date.now()}.${ext}`, { type: blob.type });
+      handleFileSelect(scannedFile);
+    } catch (error) {
+      console.error("Error fetching scanned document:", error);
+      showToast("Failed to load scanned document.", "error");
+    }
   };
 
   const validateFile = useCallback((selectedFile) => {
@@ -80,7 +97,7 @@ function UploadContract() {
         setUploadProgress(0);
       }, 2000);
       // Later: navigate("/analysis");
-    } catch (err) {
+    } catch {
       showToast("Upload failed. Please try again.", "error");
       setError("Upload failed. Please try again.");
     } finally {
@@ -237,6 +254,16 @@ function UploadContract() {
                 </p>
                 <p className="text-xs text-slate-400 mt-2 font-medium tracking-wide">SUPPORTS PDF, DOC, DOCX, PNG, JPG</p>
               </div>
+              <div className="mt-4 pt-4 border-t border-slate-200 w-full relative z-20 pointer-events-auto">
+                <button 
+                  type="button" 
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowScanner(true); }}
+                  className="mx-auto text-indigo-600 hover:text-indigo-800 text-sm font-bold flex items-center justify-center gap-2 transition-colors py-2 px-4 rounded-lg hover:bg-indigo-50"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                  Scan with Mobile Camera Instead
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -271,6 +298,12 @@ function UploadContract() {
           onClose={() => setToast(null)}
         />
       )}
+
+      <ScannerModal 
+        isOpen={showScanner} 
+        onClose={() => setShowScanner(false)} 
+        onScanComplete={handleScanComplete} 
+      />
     </div>
   );
 }

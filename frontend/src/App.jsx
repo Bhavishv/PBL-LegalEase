@@ -5,6 +5,7 @@ import Home from "./pages/Home";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import Dashboard from "./pages/Dashboard";
+import MobileScannerPage from "./pages/MobileScannerPage";
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="/signin" element={<SignIn />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
+        <Route path="/mobile-scan/:sessionId" element={<MobileScannerPage />} />
       </Routes>
     </BrowserRouter>
   );
