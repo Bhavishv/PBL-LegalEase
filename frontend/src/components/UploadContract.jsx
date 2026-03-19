@@ -1,19 +1,28 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import Toast from "./Toast";
 import ScannerModal from "./ScannerModal";
+import { uploadContract } from "../services/api";
 
 const ACCEPTED_TYPES = ".pdf,.doc,.docx,.png,.jpg,.jpeg";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 function UploadContract() {
+  const navigate = useNavigate();
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatusText, setUploadStatusText] = useState("Analyzing Document...");
   const [success, setSuccess] = useState(false);
   const [toast, setToast] = useState(null);
   const [showScanner, setShowScanner] = useState(false);
+  
+  // Camera State
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const videoRef = useRef(null);
+  const [cameraStream, setCameraStream] = useState(null);
 
   const showToast = (message, type = "info") => {
     setToast({ message, type });
@@ -42,7 +51,10 @@ function UploadContract() {
     const validExtensions = ["pdf", "doc", "docx", "png", "jpg", "jpeg"];
     const extension = selectedFile.name.split(".").pop()?.toLowerCase();
 
-    if (!extension || !validExtensions.includes(extension)) {
+    // If it's a file from camera (blob), it might not have an extension, so we use MIME type check too
+    const isValidFormat = (extension && validExtensions.includes(extension)) || selectedFile.type?.startsWith('image/');
+
+    if (!isValidFormat) {
       showToast("Please upload a PDF, DOC, DOCX, or image file.", "error");
       return false;
     }
@@ -77,31 +89,55 @@ function UploadContract() {
     setIsUploading(true);
     setError(null);
     setUploadProgress(0);
+    setUploadStatusText("Uploading document...");
+
+    // Animate the progress bar while the real API call is running
+    let currentProgress = 10;
+    setUploadProgress(currentProgress);
+
+    const progressSteps = [
+      { pct: 25, label: "Extracting Text (OCR)..." },
+      { pct: 50, label: "Running NLP Clause Detection..." },
+      { pct: 70, label: "Matching Knowledge Base (RAG)..." },
+      { pct: 85, label: "Finalizing Risk Score..." },
+    ];
+
+    let stepIndex = 0;
+    const progressInterval = setInterval(() => {
+      if (stepIndex < progressSteps.length) {
+        const { pct, label } = progressSteps[stepIndex];
+        setUploadProgress(pct);
+        setUploadStatusText(label);
+        stepIndex++;
+      } else {
+        clearInterval(progressInterval);
+      }
+    }, 800);
 
     try {
-      // Simulate upload with progress
-      console.log("Uploading file:", file.name);
-      for (let i = 0; i <= 100; i += 10) {
-        setUploadProgress(i);
-        await new Promise((r) => setTimeout(r, 100));
-      }
-      
-      setSuccess(true);
+      const result = await uploadContract(file);
+
+      clearInterval(progressInterval);
       setUploadProgress(100);
-      showToast(`Successfully uploaded ${file.name}!`, "success");
-      
-      // Reset after showing success state
+      setUploadStatusText("Analysis complete!");
+
+      // Persist result for Analysis page to consume
+      sessionStorage.setItem("legalease_analysis", JSON.stringify(result));
+
+      setSuccess(true);
+      showToast(`Successfully analyzed ${file.name}!`, "success");
+
       setTimeout(() => {
-        setFile(null);
-        setSuccess(false);
-        setUploadProgress(0);
-      }, 2000);
-      // Later: navigate("/analysis");
-    } catch {
-      showToast("Upload failed. Please try again.", "error");
-      setError("Upload failed. Please try again.");
+        navigate("/analysis");
+      }, 1500);
+    } catch (err) {
+      clearInterval(progressInterval);
+      const msg = err.message || "Analysis failed. Please try again.";
+      showToast(msg, "error");
+      setError(msg);
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -134,6 +170,47 @@ function UploadContract() {
     showToast("File cleared", "info");
   };
 
+  // Camera Functions
+  const openCamera = async () => {
+    setIsCameraOpen(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      setCameraStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      showToast("Camera access denied or unavailable", "error");
+      setIsCameraOpen(false);
+    }
+  };
+
+  const closeCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+    }
+    setCameraStream(null);
+    setIsCameraOpen(false);
+  };
+
+  const captureImage = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement("canvas");
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+      
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const simulatedFile = new File([blob], "scanned_contract.jpg", { type: "image/jpeg" });
+          handleFileSelect(simulatedFile);
+          closeCamera();
+        }
+      }, "image/jpeg", 0.9);
+    }
+  };
+
   return (
     <div className="glass rounded-2xl p-8 relative overflow-hidden group">
       {/* Subtle glow behind the upload component */}
@@ -143,130 +220,183 @@ function UploadContract() {
         <h3 className="text-xl font-bold text-slate-900 mb-2">
           Upload Contract
         </h3>
-        <p className="text-sm text-slate-500 mb-8 font-medium">
-          Upload a PDF, DOC, or image to analyze for risky clauses.
+        <p className="text-sm text-slate-500 mb-6 font-medium">
+          Upload a PDF, DOC, image, or scan directly with your camera to analyze for risky clauses.
         </p>
 
-        <div
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          className={`relative border-2 border-dashed rounded-2xl p-12 text-center transition-haptic duration-300 ${
-            isDragging
-              ? "border-blue-500 bg-blue-50/80 scale-[1.02] shadow-glow"
-              : success
-              ? "border-emerald-500 bg-emerald-50/80 shadow-[0_0_30px_rgba(16,185,129,0.2)]"
-              : "border-slate-300 hover:border-blue-400 bg-white/50 hover:bg-white/80 hover:shadow-md"
-          }`}
-        >
-          <input
-            type="file"
-            accept={ACCEPTED_TYPES}
-            onChange={handleInputChange}
-            className={`absolute inset-0 w-full h-full opacity-0 cursor-pointer ${file ? "pointer-events-none" : ""}`}
-          />
-          {success ? (
-            <div className="relative z-10 flex flex-col items-center gap-4 animate-spring-pop">
-              <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center rotate-3">
-                <svg className="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-xl font-bold text-emerald-700">Uploaded successfully!</p>
-                <p className="text-sm text-emerald-600 font-medium mt-1">Processing your contract...</p>
-              </div>
+        {isCameraOpen ? (
+          <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-video flex flex-col items-center justify-center animate-slide-in-up">
+            <video ref={videoRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover"></video>
+            
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-[80%] h-[80%] border-2 border-white/50 border-dashed rounded-lg"></div>
             </div>
-          ) : file ? (
-            <div className="relative z-10 flex flex-col items-center gap-4 animate-slide-in-up">
-              <div className="flex flex-col items-center gap-3 text-slate-700">
-                <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center -rotate-3 transition-transform hover:rotate-0">
-                  <svg
-                    className="w-8 h-8 text-blue-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
-                </div>
-                <div className="max-w-xs text-center">
-                  <span className="font-bold text-slate-800 break-words block">{file.name}</span>
-                  <span className="text-sm text-slate-500 font-medium">
-                    {(file.size / 1024).toFixed(1)} KB
-                  </span>
-                </div>
-              </div>
-              
-              {isUploading && (
-                <div className="w-full max-w-xs mt-2">
-                  <div className="bg-slate-200/80 rounded-full h-2 overflow-hidden shadow-inner">
-                    <div
-                      className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full transition-all duration-300 relative"
-                      style={{ width: `${uploadProgress}%` }}
-                    >
-                      <div className="absolute inset-0 bg-white/20 w-full"></div>
-                    </div>
-                  </div>
-                  <p className="text-xs font-bold text-blue-600 mt-2 tracking-wide text-right">{uploadProgress}%</p>
-                </div>
-              )}
-              
+            
+            <div className="absolute bottom-6 left-0 w-full flex justify-center gap-6 px-6 z-10">
               <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  clearFile();
-                }}
-                disabled={isUploading}
-                className="btn-haptic mt-2 text-sm font-medium text-slate-500 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors px-4 py-2 rounded-lg hover:bg-red-50"
+                onClick={closeCamera}
+                className="btn-haptic px-6 py-3 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white font-medium rounded-xl transition-colors"
               >
-                Cancel & Remove
+                Cancel
+              </button>
+              <button
+                onClick={captureImage}
+                className="btn-haptic px-8 py-3 bg-white text-slate-900 font-bold rounded-xl shadow-lg border-2 border-white hover:bg-slate-100 transition-all flex items-center gap-2"
+              >
+                <div className="w-4 h-4 rounded-full bg-red-500 animate-pulse"></div>
+                Capture Scan
               </button>
             </div>
-          ) : (
-            <div className="space-y-4 pointer-events-none">
-              <div className="mx-auto w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center border border-slate-100 shadow-sm animate-bounce-custom">
-                <svg
-                  className="w-10 h-10 text-blue-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                  />
-                </svg>
-              </div>
-              <div>
-                <p className="text-base text-slate-700 font-medium">
-                  Drag and drop your contract here, or{" "}
-                  <span className="text-blue-600 font-bold">browse</span>
-                </p>
-                <p className="text-xs text-slate-400 mt-2 font-medium tracking-wide">SUPPORTS PDF, DOC, DOCX, PNG, JPG</p>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-200 w-full relative z-20 pointer-events-auto">
-                <button 
-                  type="button" 
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowScanner(true); }}
-                  className="mx-auto text-indigo-600 hover:text-indigo-800 text-sm font-bold flex items-center justify-center gap-2 transition-colors py-2 px-4 rounded-lg hover:bg-indigo-50"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                  Scan with Mobile Camera Instead
-                </button>
-              </div>
+          </div>
+        ) : (
+          <>
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              className={`relative border-2 border-dashed rounded-2xl p-10 text-center transition-haptic duration-300 ${
+                isDragging
+                  ? "border-blue-500 bg-blue-50/80 scale-[1.02] shadow-glow"
+                  : success
+                  ? "border-emerald-500 bg-emerald-50/80 shadow-[0_0_30px_rgba(16,185,129,0.2)]"
+                  : "border-slate-300 hover:border-blue-400 bg-white/50 hover:bg-white/80 hover:shadow-md"
+              }`}
+            >
+              <input
+                type="file"
+                accept={ACCEPTED_TYPES}
+                onChange={handleInputChange}
+                className={`absolute inset-0 w-full h-full opacity-0 cursor-pointer ${file ? "pointer-events-none" : ""}`}
+              />
+              {success ? (
+                <div className="relative z-10 flex flex-col items-center gap-4 animate-spring-pop">
+                  <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center rotate-3">
+                    <svg className="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold text-emerald-700">Uploaded successfully!</p>
+                    <p className="text-sm text-emerald-600 font-medium mt-1">Redirecting to Analysis Dashboard...</p>
+                  </div>
+                </div>
+              ) : file ? (
+                <div className="relative z-10 flex flex-col items-center gap-4 animate-slide-in-up">
+                  <div className="flex flex-col items-center gap-3 text-slate-700">
+                    <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center -rotate-3 transition-transform hover:rotate-0">
+                      <svg
+                        className="w-8 h-8 text-blue-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                      </svg>
+                    </div>
+                    <div className="max-w-xs text-center">
+                      <span className="font-bold text-slate-800 break-words block">{file.name}</span>
+                      <span className="text-sm text-slate-500 font-medium">
+                        {(file.size / 1024).toFixed(1)} KB
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {isUploading && (
+                    <div className="w-full max-w-xs mt-2 animate-fade-in">
+                      <div className="bg-slate-200/80 rounded-full h-2.5 overflow-hidden shadow-inner mb-2 border border-slate-300/50">
+                        <div
+                          className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full transition-all duration-300 relative"
+                          style={{ width: `${uploadProgress}%` }}
+                        >
+                          <div className="absolute inset-0 bg-white/20 w-full animate-pulse"></div>
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-semibold text-indigo-700">{uploadStatusText}</span>
+                        <span className="font-bold text-blue-600 tracking-wide">{uploadProgress}%</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {!isUploading && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        clearFile();
+                      }}
+                      className="btn-haptic mt-2 text-sm font-medium text-slate-500 hover:text-red-600 transition-colors px-4 py-2 rounded-lg hover:bg-red-50"
+                    >
+                      Cancel & Remove
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4 pointer-events-none">
+                  <div className="mx-auto w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center border border-slate-100 shadow-sm animate-bounce-custom">
+                    <svg
+                      className="w-10 h-10 text-blue-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-base text-slate-700 font-medium">
+                      Drag and drop your contract here, or{" "}
+                      <span className="text-blue-600 font-bold">browse</span>
+                    </p>
+                    <p className="text-xs text-slate-400 mt-2 font-medium tracking-wide">SUPPORTS PDF, DOC, DOCX, PNG, JPG</p>
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-slate-200 w-full relative z-20 pointer-events-auto">
+                    <button 
+                      type="button" 
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowScanner(true); }}
+                      className="mx-auto text-indigo-600 hover:text-indigo-800 text-sm font-bold flex items-center justify-center gap-2 transition-colors py-2 px-4 rounded-lg hover:bg-indigo-50"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                      Scan with Mobile Camera Instead
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            {!file && (
+              <div className="mt-4 flex items-center justify-center">
+                <div className="flex-1 h-px bg-slate-200"></div>
+                <span className="px-4 text-xs font-semibold text-slate-400 uppercase tracking-widest">or</span>
+                <div className="flex-1 h-px bg-slate-200"></div>
+              </div>
+            )}
+
+            {!file && (
+              <button
+                onClick={openCamera}
+                className="btn-haptic mt-4 w-full flex items-center justify-center gap-3 px-6 py-3.5 bg-white border-2 border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all focus:outline-none focus:ring-4 focus:ring-slate-100"
+              >
+                <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Scan with Camera
+              </button>
+            )}
+          </>
+        )}
 
         {error && (
           <div className="mt-4 flex items-center gap-2 text-rose-600 bg-rose-50 p-3 rounded-xl animate-spring-pop border border-rose-100">
@@ -277,13 +407,13 @@ function UploadContract() {
 
         <button
           onClick={handleUpload}
-          disabled={!file || isUploading}
-          className="btn-haptic mt-8 w-full block px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-base font-bold rounded-xl hover:from-blue-700 hover:to-indigo-700 disabled:from-slate-300 disabled:to-slate-400 disabled:text-slate-500 disabled:cursor-not-allowed disabled:shadow-none shadow-glow hover:shadow-glow-hover transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/30"
+          disabled={!file || isUploading || isCameraOpen}
+          className="btn-haptic mt-8 w-full block px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-base font-bold rounded-xl hover:from-blue-700 hover:to-indigo-700 disabled:from-slate-200 disabled:to-slate-300 disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none shadow-glow hover:shadow-glow-hover transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/30"
         >
           {isUploading ? (
             <span className="flex items-center justify-center gap-3">
               <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-              Analyzing Document...
+              {uploadProgress < 100 ? "Analyzing..." : "Finalizing..."}
             </span>
           ) : (
             "Analyze Contract"
