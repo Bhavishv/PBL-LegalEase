@@ -10,6 +10,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 function UploadContract() {
   const navigate = useNavigate();
   const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null); // Image preview for scanned/image files
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -72,9 +73,17 @@ function UploadContract() {
       if (validateFile(selectedFile)) {
         setFile(selectedFile);
         setSuccess(false);
+        // Generate a preview URL for image files (including scanned images from mobile)
+        if (selectedFile.type?.startsWith('image/')) {
+          const url = URL.createObjectURL(selectedFile);
+          setPreviewUrl(url);
+        } else {
+          setPreviewUrl(null);
+        }
         showToast(`File selected: ${selectedFile.name}`, "success");
       } else {
         setFile(null);
+        setPreviewUrl(null);
       }
     },
     [validateFile]
@@ -163,7 +172,9 @@ function UploadContract() {
   };
 
   const clearFile = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl); // Clean up object URL from memory
     setFile(null);
+    setPreviewUrl(null);
     setError(null);
     setSuccess(false);
     setUploadProgress(0);
@@ -283,21 +294,33 @@ function UploadContract() {
               ) : file ? (
                 <div className="relative z-10 flex flex-col items-center gap-4 animate-slide-in-up">
                   <div className="flex flex-col items-center gap-3 text-slate-700">
-                    <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center -rotate-3 transition-transform hover:rotate-0">
-                      <svg
-                        className="w-8 h-8 text-blue-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    {previewUrl ? (
+                      // Show a real image preview for scanned/image files
+                      <div className="w-full max-w-xs rounded-2xl overflow-hidden border border-slate-200 shadow-md -rotate-1 transition-transform hover:rotate-0">
+                        <img
+                          src={previewUrl}
+                          alt="Scanned document preview"
+                          className="w-full h-48 object-cover"
                         />
-                      </svg>
-                    </div>
+                      </div>
+                    ) : (
+                      // Generic document icon for PDFs / DOC files
+                      <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center -rotate-3 transition-transform hover:rotate-0">
+                        <svg
+                          className="w-8 h-8 text-blue-600"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                      </div>
+                    )}
                     <div className="max-w-xs text-center">
                       <span className="font-bold text-slate-800 break-words block">{file.name}</span>
                       <span className="text-sm text-slate-500 font-medium">

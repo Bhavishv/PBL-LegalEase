@@ -56,6 +56,11 @@ const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Validate request
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Please provide an email and password' });
+    }
+
     const user = await User.findOne({ email });
 
     // Check user & passwords match
