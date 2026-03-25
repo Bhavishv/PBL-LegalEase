@@ -11,21 +11,17 @@ const ScannerModal = ({ isOpen, onClose, onScanComplete }) => {
     if (isOpen) {
       const initSession = async () => {
         try {
-          // Adjust API URL if backend runs on different port/host
-          const host = window.location.hostname;
-          const apiUrl = `http://${host}:5000/api/scan/session`;
-          const response = await fetch(apiUrl, {
+          const response = await fetch('/api/scan/session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
           });
           const data = await response.json();
           setSessionId(data.sessionId);
-          
-          // Generate the URL that the mobile phone will navigate to.
-          // Note: for a phone to access it locally, you should ideally use the local IP instead of localhost.
-          // We use the current window's hostname, assuming the dev server is exposed (e.g. run with --host)
-          const port = window.location.port ? `:${window.location.port}` : '';
-          const url = `${window.location.protocol}//${host}${port}/mobile-scan/${data.sessionId}`;
+
+          // Use the current page's origin (protocol + host).
+          // When running through ngrok, this automatically becomes the ngrok public URL
+          // e.g. https://abc123.ngrok-free.app — works from any network, no firewall issues.
+          const url = `${window.location.origin}/mobile-scan/${data.sessionId}`;
           setQrUrl(url);
           setStatus('pending');
         } catch (error) {
@@ -44,15 +40,13 @@ const ScannerModal = ({ isOpen, onClose, onScanComplete }) => {
     if (isOpen && sessionId && status === 'pending') {
       interval = setInterval(async () => {
         try {
-          const host = window.location.hostname;
-          const res = await fetch(`http://${host}:5000/api/scan/status/${sessionId}`);
+          const res = await fetch(`/api/scan/status/${sessionId}`);
           if (res.ok) {
             const data = await res.json();
             if (data.status === 'completed' && data.imageUrl) {
               setStatus('completed');
-              // pass the full URL to the parent component
-              onScanComplete(`http://${host}:5000${data.imageUrl}`);
-              onClose(); // Optional: close modal immediately or after delay
+              onScanComplete(data.imageUrl);
+              onClose();
             }
           }
         } catch (error) {

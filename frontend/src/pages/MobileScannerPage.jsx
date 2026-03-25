@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
 const MobileScannerPage = () => {
@@ -9,7 +9,7 @@ const MobileScannerPage = () => {
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
 
-  // Start camera stream
+  // Start camera stream — only sets status to 'camera', stream is attached in useEffect
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -17,18 +17,22 @@ const MobileScannerPage = () => {
         audio: false
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
+      // Trigger re-render first, then useEffect attaches stream after <video> is in DOM
       setStatus('camera');
     } catch (err) {
       console.error("Camera access error:", err);
-      // Fall back to file input if camera access fails
       setErrorMsg('Camera access denied or not available. Please use "Select from Gallery" instead.');
       setStatus('error');
     }
   }, []);
+
+  // Attach stream to video element AFTER it has been rendered into the DOM
+  useEffect(() => {
+    if (status === 'camera' && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(err => console.error("Video play error:", err));
+    }
+  }, [status]);
 
   // Stop camera stream
   const stopCamera = useCallback(() => {
@@ -43,6 +47,13 @@ const MobileScannerPage = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
+
+    // Guard: video must have actual dimensions (stream must be active & loaded)
+    if (!video.videoWidth || video.videoWidth === 0) {
+      setErrorMsg('Camera is not ready yet. Please wait a moment and try again.');
+      setStatus('error');
+      return;
+    }
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -69,19 +80,25 @@ const MobileScannerPage = () => {
   };
 
   // Upload image to backend
+  // Uses a relative path (/api/scan/upload) which routes through the Vite proxy.
+  // When accessed via ngrok, the request goes: Phone → ngrok → Vite (port 5173) → Backend (port 5000)
+  // This avoids all direct-IP and firewall issues.
   const uploadImage = async (fileOrBlob, filename) => {
     setStatus('uploading');
 
     const formData = new FormData();
-    formData.append('image', fileOrBlob, filename);
+    // IMPORTANT: sessionId must come BEFORE the image file.
+    // Multer processes fields in stream order — if image comes first,
+    // req.body.sessionId is still undefined when the filename function runs → 500 error.
     formData.append('sessionId', sessionId);
+    formData.append('image', fileOrBlob, filename);
 
     try {
-      const host = window.location.hostname;
-      const apiUrl = `http://${host}:5000/api/scan/upload`;
-
-      const response = await fetch(apiUrl, {
+      const response = await fetch('/api/scan/upload', {
         method: 'POST',
+        headers: {
+          'ngrok-skip-browser-warning': 'true', // Bypass ngrok's interstitial for API calls
+        },
         body: formData,
       });
 
@@ -94,7 +111,7 @@ const MobileScannerPage = () => {
       }
     } catch (err) {
       console.error("Upload Error:", err);
-      setErrorMsg('Network error. Ensure your PC and phone are on the same WiFi network.');
+      setErrorMsg(`Upload failed: ${err.message || err.toString()}`);
       setStatus('error');
     }
   };

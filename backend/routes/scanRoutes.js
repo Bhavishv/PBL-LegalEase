@@ -4,6 +4,20 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+
+// Helper: get local network IPv4 address
+const getLocalIP = () => {
+  const interfaces = os.networkInterfaces();
+  for (const iface of Object.values(interfaces)) {
+    for (const alias of iface) {
+      if (alias.family === 'IPv4' && !alias.internal) {
+        return alias.address;
+      }
+    }
+  }
+  return 'localhost'; // fallback
+};
 
 // Set up storage engine for multer
 const storage = multer.diskStorage({
@@ -43,7 +57,14 @@ router.post('/session', (req, res) => {
     filePath: null,
     fileName: null
   });
-  res.json({ sessionId });
+
+  const localIP = getLocalIP();
+  res.json({
+    sessionId,
+    localIP,
+    backendPort: 5000,
+    frontendPort: 5173 // Vite's default; update if you use a different port
+  });
 });
 
 // @route   POST /api/scan/upload
