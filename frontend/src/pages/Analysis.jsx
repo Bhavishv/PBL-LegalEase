@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import ContractChatbot from "../components/ContractChatbot";
+import { translateText } from "../services/api";
 
 // Standard mock contract text broken into logical clauses for our NLP detection mock
 const CONTRACT_CLAUSES = [
@@ -110,7 +111,8 @@ const JARGON_DICT = {
   "successive": "Following one after another without interruption.",
   "expressly waived": "An intentional and explicit surrender of a right.",
   "indemnification": "A promise to pay for the cost of potential damages or losses.",
-  "injunction": "A court order requiring a person to do or cease doing a specific action."
+  "injunction": "A court order requiring a person to do or cease doing a specific action.",
+  "redline": "A term used in legal drafting to show changes made to a contract, typically shown in red."
 };
 
 function Analysis() {
@@ -118,6 +120,7 @@ function Analysis() {
   const [activeTrapChain, setActiveTrapChain] = useState(null);
   const [language, setLanguage] = useState("en");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
   const [activeTab, setActiveTab] = useState("insights");
 
   // Live API data state (overrides mock when available)
@@ -126,7 +129,11 @@ function Analysis() {
   const [liveScore, setLiveScore] = useState(null);
   const [liveRiskLabel, setLiveRiskLabel] = useState(null);
   const [liveFilename, setLiveFilename] = useState(null);
+  const [liveEntities, setLiveEntities] = useState(null);
+  const [liveFinancials, setLiveFinancials] = useState(null);
+  const [liveCompliance, setLiveCompliance] = useState(null);
   const [isLiveData, setIsLiveData] = useState(false);
+  const [showRedline, setShowRedline] = useState(false);
   
   const speechRef = useRef(null);
 
@@ -175,6 +182,9 @@ function Analysis() {
           setLiveScore(data.overall_score);
           setLiveRiskLabel(data.risk_label);
           setLiveFilename(data.filename);
+          setLiveEntities(data.entities);
+          setLiveFinancials(data.financial_data);
+          setLiveCompliance(data.compliance);
           setIsLiveData(true);
           setSelectedClauseId(mapped[0]?.id || "c1");
         }
@@ -231,6 +241,7 @@ function Analysis() {
   const handleClauseClick = (id) => {
     setSelectedClauseId(id);
     setActiveTrapChain(null);
+    setShowRedline(false);
     stopSpeaking();
   };
 
@@ -247,7 +258,54 @@ function Analysis() {
   const getExplanationText = () => {
     if (!selectedClause) return "";
     if (language === "en") return selectedClause.explanation;
-    return selectedClause.translations[language] || selectedClause.explanation;
+    return selectedClause.translations?.[language] || selectedClause.explanation;
+  };
+
+  const handleLanguageChange = async (newLang) => {
+    setLanguage(newLang);
+    if (newLang === "en" || !selectedClause) return;
+
+    // Check if we already have the translation
+    if (selectedClause.translations && selectedClause.translations[newLang]) {
+      return;
+    }
+
+    // Fetch from backend
+    setIsTranslating(true);
+    try {
+      const result = await translateText(selectedClause.explanation, newLang);
+      
+      // Update the clause in state with the new translation
+      const updateClauses = (clauses) => {
+        return clauses.map(c => {
+          if (c.id === selectedClause.id) {
+            return {
+              ...c,
+              translations: {
+                ...(c.translations || {}),
+                [newLang]: result.translated_text
+              }
+            };
+          }
+          return c;
+        });
+      };
+
+      if (liveClauses) {
+        setLiveClauses(updateClauses(liveClauses));
+      } else {
+        // We're using mock data, but we can still update it for this session
+        // Actually, it's better to just update what's in 'mapped' if it's the first time
+        // For simplicity, we'll just update liveClauses if it exists, 
+        // or initialize liveClauses from mock data first.
+        const base = liveClauses || CONTRACT_CLAUSES;
+        setLiveClauses(updateClauses(base));
+      }
+    } catch (err) {
+      console.error("Translation failed:", err);
+    } finally {
+      setIsTranslating(false);
+    }
   };
 
   const toggleSpeech = () => {
@@ -290,6 +348,21 @@ function Analysis() {
     }
   };
 
+  const startListening = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Voice recognition is not supported in this browser.");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.onstart = () => { console.log("Voice listening..."); };
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      alert(`Voice Command: "${transcript}"`);
+    };
+    recognition.start();
+  };
+
   const isClauseHighlightedInTrap = (id) => {
     if (!activeTrapChain) return false;
     const trap = ACTIVE_TRAPS.find(tc => tc.id === activeTrapChain);
@@ -326,6 +399,13 @@ function Analysis() {
             <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
             Compare Versions
           </Link>
+          <button 
+            onClick={startListening}
+            className="btn-haptic glass px-4 py-2 rounded-xl flex items-center gap-2 text-indigo-700 font-bold hover:bg-indigo-50 hover:shadow-md transition-all border border-indigo-200"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+            Voice Control
+          </button>
           <div className="glass px-6 py-2 rounded-xl flex items-center gap-4 shadow-sm border border-rose-100">
             <div>
               <p className="text-xs uppercase tracking-widest font-bold text-slate-500">Risk Score</p>
@@ -390,7 +470,15 @@ function Analysis() {
                         {renderTextWithJargon(clause.text)}
                       </span>
                     </div>
-                    {/* Inline Comments Mock */}
+                    {/* Inline Comments */}
+                    {(isActive || isTrapped) && (
+                      <div className="mt-2 ml-4 animate-slide-in-up">
+                        <button className="text-[10px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-1 hover:text-blue-800 transition-colors">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                          Add Comment
+                        </button>
+                      </div>
+                    )}
                     {isActive && (
                       <div className="mt-3 ml-4 border-l-2 border-blue-200 pl-4 animate-slide-in-up">
                         <div className="bg-white p-3 rounded-xl border border-blue-100 shadow-sm mb-2 relative">
@@ -440,6 +528,34 @@ function Analysis() {
             {/* --- TAB 1: INSIGHTS (Existing Functionality + Summaries) ---  */}
             {activeTab === 'insights' && (
               <div className="space-y-6 animate-fade-in">
+                
+                {/* Quick Facts (AI Extracted Entities) */}
+                {(liveEntities || !isLiveData) && (
+                  <div className="glass rounded-2xl p-5 border border-indigo-100 bg-gradient-to-br from-indigo-50/30 to-white shadow-sm">
+                    <h3 className="font-bold text-slate-900 flex items-center gap-2 mb-4">
+                      <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                      Quick Facts
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-white/50 p-3 rounded-xl border border-indigo-50">
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Parties</p>
+                        <p className="text-xs font-bold text-slate-700 mt-1 truncate">{liveEntities?.parties?.[0] || (isLiveData ? "Not found" : "LegalEase & User")}</p>
+                      </div>
+                      <div className="bg-white/50 p-3 rounded-xl border border-indigo-50">
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Governing Law</p>
+                        <p className="text-xs font-bold text-slate-700 mt-1">{liveEntities?.jurisdiction || (isLiveData ? "Not specified" : "Delaware")}</p>
+                      </div>
+                      <div className="bg-white/50 p-3 rounded-xl border border-indigo-50">
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Start Date</p>
+                        <p className="text-xs font-bold text-slate-700 mt-1">{liveEntities?.effective_date || (isLiveData ? "Not found" : "March 10, 2026")}</p>
+                      </div>
+                      <div className="bg-white/50 p-3 rounded-xl border border-indigo-50">
+                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">End/Renewal</p>
+                        <p className="text-xs font-bold text-slate-700 mt-1">{liveEntities?.expiration_date || (isLiveData ? "Not found" : "March 10, 2027")}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 {/* File Context & Summary */}
                 <div className="glass rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden group">
@@ -593,8 +709,9 @@ function Analysis() {
                         </div>
                         <select 
                           value={language}
-                          onChange={(e) => setLanguage(e.target.value)}
-                          className="bg-white border text-xs font-bold border-slate-200 text-slate-700 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors btn-haptic cursor-pointer shadow-sm w-full xl:w-auto"
+                          onChange={(e) => handleLanguageChange(e.target.value)}
+                          disabled={isTranslating}
+                          className="bg-white border text-xs font-bold border-slate-200 text-slate-700 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors btn-haptic cursor-pointer shadow-sm w-full xl:w-auto disabled:opacity-50"
                         >
                           <option value="en">🇬🇧 English</option>
                           <option value="hi">🇮🇳 Hindi</option>
@@ -623,10 +740,40 @@ function Analysis() {
                           <p className={`text-base font-medium leading-relaxed
                             ${language !== 'en' ? 'font-sans tracking-wide' : ''}
                             ${selectedClause.risk === 'high' ? 'text-rose-900' : selectedClause.risk === 'warning' ? 'text-amber-900' : 'text-slate-800'}
+                            ${isTranslating ? 'opacity-40 grayscale animate-pulse' : ''}
                           `}>
-                            {getExplanationText()}
+                            {isTranslating ? "Translating explanation..." : getExplanationText()}
                           </p>
                         </div>
+
+                        {/* Suggested Redline Section */}
+                        {selectedClause.risk !== 'safe' && (
+                          <div className="animate-slide-in-up">
+                            <button 
+                              onClick={() => setShowRedline(!showRedline)}
+                              className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all 
+                                ${showRedline 
+                                  ? 'bg-slate-100 text-slate-600 border border-slate-200' 
+                                  : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'}
+                              `}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                              {showRedline ? "Hide Suggestion" : "Suggest Safe Alternative"}
+                            </button>
+
+                            {showRedline && (
+                              <div className="mt-3 p-4 bg-emerald-50 rounded-xl border border-emerald-200 shadow-sm animate-spring-pop">
+                                <div className="flex justify-between items-center mb-2">
+                                  <span className="text-[10px] uppercase font-bold text-emerald-600 tracking-widest">AI Redline (Safe)</span>
+                                  <button onClick={() => {navigator.clipboard.writeText(selectedClause.suggested_redline || "No alternative available.")}} className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 bg-white px-2 py-0.5 rounded border border-emerald-100">Copy</button>
+                                </div>
+                                <p className="text-sm font-serif italic text-slate-700 leading-relaxed border-l-2 border-emerald-300 pl-3">
+                                  {selectedClause.suggested_redline || (isLiveData ? "Processing alternative language..." : "The Agreement may be terminated by either party upon thirty (30) days' written notice, with pro-rated fees due only for services provided through the date of termination.") }
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </>
                   ) : (
@@ -753,11 +900,11 @@ function Analysis() {
                       <span>$0</span>
                     </div>
 
-                    {[ 
+                    {(liveFinancials || [ 
                       { year: 'Yr 1', base: 40, penalty: 80 },
                       { year: 'Yr 2', base: 60, penalty: 40 },
                       { year: 'Yr 3', base: 80, penalty: 0 }
-                    ].map((data, i) => (
+                    ]).map((data, i) => (
                       <div key={i} className="flex-1 flex flex-col justify-end items-center group relative h-full pt-4">
                         <div className="w-full max-w-[48px] bg-rose-400/80 rounded-t-sm transition-all duration-300 group-hover:bg-rose-500 relative shadow-inner isolate border-b border-white/20" style={{ height: `${data.penalty}%` }}>
                           <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-white px-1.5 py-0.5 rounded shadow-sm border border-rose-100 z-10">Penalty</span>
@@ -790,8 +937,10 @@ function Analysis() {
                       <p className="text-xs font-medium text-slate-500 mt-1">Based on historical contract fairness.</p>
                     </div>
                     <div className="text-center">
-                      <div className="w-14 h-14 rounded-full border-4 border-amber-400 flex items-center justify-center font-bold text-amber-600 text-lg shadow-sm">
-                        42
+                      <div className={`w-14 h-14 rounded-full border-4 flex items-center justify-center font-bold text-lg shadow-sm 
+                        ${(liveCompliance?.score || 42) > 70 ? 'border-emerald-400 text-emerald-600' : 'border-amber-400 text-amber-600'}
+                      `}>
+                        {liveCompliance?.score || 42}
                       </div>
                       <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 mt-1 block">Out of 100</span>
                     </div>
@@ -832,8 +981,8 @@ function Analysis() {
                         <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-800 text-white flex items-center justify-center text-[10px] font-bold">+8k</div>
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-800">87% of users reject Clause 4</p>
-                        <p className="text-xs text-slate-500">The mandatory Delaware arbitration is highly contested.</p>
+                        <p className="text-sm font-bold text-slate-800">{isLiveData ? (liveCompliance?.is_compliant ? "Privacy Compliant" : "Compliance Warnings") : "87% of users reject Clause 4"}</p>
+                        <p className="text-xs text-slate-500">{isLiveData ? liveCompliance?.findings?.[0] : "The mandatory Delaware arbitration is highly contested."}</p>
                       </div>
                     </div>
                   </div>
