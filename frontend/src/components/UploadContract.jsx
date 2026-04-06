@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Toast from "./Toast";
+import ScannerModal from "./ScannerModal";
 import { uploadContract } from "../services/api";
 
 const ACCEPTED_TYPES = ".pdf,.doc,.docx,.png,.jpg,.jpeg";
@@ -9,6 +10,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 function UploadContract() {
   const navigate = useNavigate();
   const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null); // Image preview for scanned/image files
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -16,6 +18,7 @@ function UploadContract() {
   const [uploadStatusText, setUploadStatusText] = useState("Analyzing Document...");
   const [success, setSuccess] = useState(false);
   const [toast, setToast] = useState(null);
+  const [showScanner, setShowScanner] = useState(false);
   
   // Camera State
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -24,6 +27,21 @@ function UploadContract() {
 
   const showToast = (message, type = "info") => {
     setToast({ message, type });
+  };
+
+  const handleScanComplete = async (imageUrl) => {
+    try {
+      showToast("Fetching scanned document...", "info");
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      // create a file object
+      const ext = imageUrl.split('.').pop() || 'jpg';
+      const scannedFile = new File([blob], `scanned_document_${Date.now()}.${ext}`, { type: blob.type });
+      handleFileSelect(scannedFile);
+    } catch (error) {
+      console.error("Error fetching scanned document:", error);
+      showToast("Failed to load scanned document.", "error");
+    }
   };
 
   const validateFile = useCallback((selectedFile) => {
@@ -55,9 +73,17 @@ function UploadContract() {
       if (validateFile(selectedFile)) {
         setFile(selectedFile);
         setSuccess(false);
+        // Generate a preview URL for image files (including scanned images from mobile)
+        if (selectedFile.type?.startsWith('image/')) {
+          const url = URL.createObjectURL(selectedFile);
+          setPreviewUrl(url);
+        } else {
+          setPreviewUrl(null);
+        }
         showToast(`File selected: ${selectedFile.name}`, "success");
       } else {
         setFile(null);
+        setPreviewUrl(null);
       }
     },
     [validateFile]
@@ -118,6 +144,7 @@ function UploadContract() {
       const msg = err.message || "Analysis failed. Please try again.";
       showToast(msg, "error");
       setError(msg);
+    } finally {
       setIsUploading(false);
       setUploadProgress(0);
     }
@@ -145,7 +172,9 @@ function UploadContract() {
   };
 
   const clearFile = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl); // Clean up object URL from memory
     setFile(null);
+    setPreviewUrl(null);
     setError(null);
     setSuccess(false);
     setUploadProgress(0);
@@ -265,21 +294,33 @@ function UploadContract() {
               ) : file ? (
                 <div className="relative z-10 flex flex-col items-center gap-4 animate-slide-in-up">
                   <div className="flex flex-col items-center gap-3 text-slate-700">
-                    <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center -rotate-3 transition-transform hover:rotate-0">
-                      <svg
-                        className="w-8 h-8 text-blue-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    {previewUrl ? (
+                      // Show a real image preview for scanned/image files
+                      <div className="w-full max-w-xs rounded-2xl overflow-hidden border border-slate-200 shadow-md -rotate-1 transition-transform hover:rotate-0">
+                        <img
+                          src={previewUrl}
+                          alt="Scanned document preview"
+                          className="w-full h-48 object-cover"
                         />
-                      </svg>
-                    </div>
+                      </div>
+                    ) : (
+                      // Generic document icon for PDFs / DOC files
+                      <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center -rotate-3 transition-transform hover:rotate-0">
+                        <svg
+                          className="w-8 h-8 text-blue-600"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                      </div>
+                    )}
                     <div className="max-w-xs text-center">
                       <span className="font-bold text-slate-800 break-words block">{file.name}</span>
                       <span className="text-sm text-slate-500 font-medium">
@@ -343,6 +384,16 @@ function UploadContract() {
                     </p>
                     <p className="text-xs text-slate-400 mt-2 font-medium tracking-wide">SUPPORTS PDF, DOC, DOCX, PNG, JPG</p>
                   </div>
+                  <div className="mt-4 pt-4 border-t border-slate-200 w-full relative z-20 pointer-events-auto">
+                    <button 
+                      type="button" 
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowScanner(true); }}
+                      className="mx-auto text-indigo-600 hover:text-indigo-800 text-sm font-bold flex items-center justify-center gap-2 transition-colors py-2 px-4 rounded-lg hover:bg-indigo-50"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                      Scan with Mobile Camera Instead
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -400,6 +451,12 @@ function UploadContract() {
           onClose={() => setToast(null)}
         />
       )}
+
+      <ScannerModal 
+        isOpen={showScanner} 
+        onClose={() => setShowScanner(false)} 
+        onScanComplete={handleScanComplete} 
+      />
     </div>
   );
 }
