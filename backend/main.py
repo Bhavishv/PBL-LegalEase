@@ -15,11 +15,15 @@ Pipeline:
   6. Compute overall risk score
 """
 
+import os
 import uuid
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
+from dotenv import load_dotenv
+
+load_dotenv()  # loads GEMINI_API_KEY and other vars from .env
 
 from text_extractor import extract_text
 from clause_segmenter import segment_clauses
@@ -73,6 +77,20 @@ class AnalysisResponse(BaseModel):
 class TextRequest(BaseModel):
     text: str
     filename: Optional[str] = "contract.txt"
+
+class ChatMessage(BaseModel):
+    role: str   # "user" | "model"
+    content: str
+
+class ChatRequest(BaseModel):
+    contract_text: str          # full contract text for context
+    contract_filename: str
+    history: List[ChatMessage]  # previous turns
+    message: str                # new user message
+
+class ChatResponse(BaseModel):
+    reply: str
+    error: Optional[str] = None
 
 # ── Core pipeline function ────────────────────────────────────────────────────
 
@@ -154,6 +172,53 @@ def analyze_text(body: TextRequest):
     if not body.text.strip():
         raise HTTPException(status_code=400, detail="Text body is empty.")
     return _run_pipeline(body.text, body.filename or "contract.txt")
+
+
+# ── Chat endpoint ─────────────────────────────────────────────────────────────
+
+@app.post("/api/chat", response_model=ChatResponse)
+def chat_with_contract(body: ChatRequest):
+    """Ask Gemini anything about the uploaded contract."""
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return ChatResponse(
+            reply="The Gemini API key is not configured. Please add GEMINI_API_KEY to your .env file.",
+            error="no_api_key"
+        )
+
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+
+        system_prompt = (
+            f"You are LegalEase AI, an expert legal assistant. "
+            f"The user has uploaded a contract named '{body.contract_filename}'. "
+            f"You have full access to the contract text below. "
+            f"Answer the user's questions in plain English, be concise, and highlight any risks. "
+            f"Do not make up clauses that do not exist in the contract.\n\n"
+            f"=== CONTRACT TEXT ===\n{body.contract_text[:8000]}\n=== END CONTRACT ==="
+        )
+
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=system_prompt,
+        )
+
+        # Build history in Gemini format
+        gemini_history = [
+            {"role": msg.role, "parts": [msg.content]}
+            for msg in body.history
+        ]
+
+        chat = model.start_chat(history=gemini_history)
+        response = chat.send_message(body.message)
+        return ChatResponse(reply=response.text.strip())
+
+    except Exception as e:
+        return ChatResponse(
+            reply="Sorry, I couldn't process that question. Please try again.",
+            error=str(e)
+        )
 
 
 # ── Run directly ─────────────────────────────────────────────────────────────

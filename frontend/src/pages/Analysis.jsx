@@ -3,36 +3,21 @@ import { Link, useNavigate } from "react-router-dom";
 
 /* ─── risk helpers ───────────────────────────────────────────────── */
 const riskMeta = {
-  high:    { label: "High Risk",  emoji: "🔴", bar: "bg-rose-500",    bg: "bg-rose-200/70"    },
-  warning: { label: "Warning",    emoji: "🟡", bar: "bg-amber-400",   bg: "bg-amber-200/70"   },
-  safe:    { label: "Safe",       emoji: "🟢", bar: "bg-emerald-500", bg: "bg-emerald-200/50" },
+  high: { label: "High Risk", emoji: "🔴", bar: "bg-rose-500", bg: "bg-rose-200/70" },
+  warning: { label: "Warning", emoji: "🟡", bar: "bg-amber-400", bg: "bg-amber-200/70" },
+  safe: { label: "Safe", emoji: "🟢", bar: "bg-emerald-500", bg: "bg-emerald-200/50" },
 };
 
 const scoreColor = (s) =>
   s >= 85 ? "text-emerald-600 border-emerald-500 bg-emerald-50"
-  : s >= 60 ? "text-amber-600 border-amber-400 bg-amber-50"
-  : "text-rose-600 border-rose-500 bg-rose-50";
+    : s >= 60 ? "text-amber-600 border-amber-400 bg-amber-50"
+      : "text-rose-600 border-rose-500 bg-rose-50";
 
 const scoreLabel = (s) =>
   s >= 85 ? "Safe to Sign" : s >= 60 ? "Review Carefully" : "Do NOT Sign Yet";
 const scoreEmoji = (s) => s >= 85 ? "✅" : s >= 60 ? "⚠️" : "🚫";
 
-/* ─── mock fall-back data ─────────────────────────────────────────── */
-const MOCK = {
-  filename: "Sample_Contract.pdf",
-  overall_score: 38,
-  risk_label: "High Risk",
-  trap_chains: [
-    { name: "Auto-Renewal Trap", description: "Auto-renewal combined with a 90-day cancellation window and full-term penalty creates a severe financial lock-in.", matched_keywords: ["automatically renew", "cancellation fee", "early termination"] }
-  ],
-  clauses: [
-    { id: "c1", text: "This Agreement shall automatically renew for successive one-year terms unless written notice is provided 90 days prior to expiry.", risk_level: "high",    explanation: "Your contract keeps renewing every year automatically. To stop it you must send a written notice 90 days before the year ends — easy to miss!", confidence: 0.91 },
-    { id: "c2", text: "If you terminate this Agreement early, you shall immediately pay all remaining fees for the entire intended term.",                  risk_level: "high",    explanation: "If you cancel early you still owe the FULL contract amount — even if you only used 2 months of a 12-month contract.", confidence: 0.87 },
-    { id: "c3", text: "Any dispute shall be settled exclusively by binding arbitration in Delaware. Class actions and jury trials are waived.",            risk_level: "warning", explanation: "You give up your right to sue in regular court or join a class-action. Arbitration favours the larger party.", confidence: 0.76 },
-    { id: "c4", text: "Provider may share Customer data with third-party partners for marketing without direct notification.",                            risk_level: "warning", explanation: "The company can share your data with advertisers without telling you.", confidence: 0.73 },
-    { id: "c5", text: "Provider guarantees 99.9% platform uptime, excluding scheduled maintenance windows.",                                            risk_level: "safe",    explanation: "Standard uptime guarantee — this is fair and industry-normal.", confidence: 0.82 },
-  ]
-};
+/* ─── No MOCK data — real states only ─────────────────────────────── */
 
 /* ─────────────────────────────────────────────────────────────────── *
  *  Build a flat word list from all clauses, keeping per-word metadata *
@@ -61,19 +46,22 @@ function Analysis() {
   const navigate = useNavigate();
   const readerRef = useRef(null);
 
-  const [data,        setData]        = useState(null);
-  const [isLive,      setIsLive]      = useState(false);
-  const [activeClause, setActive]     = useState(null);
-  const [filter,      setFilter]      = useState("all");
+  const [data, setData] = useState(null);
+  const [isLive, setIsLive] = useState(false);
+  const [activeClause, setActive] = useState(null);
+  const [filter, setFilter] = useState("all");
+  const [pageState, setPageState] = useState("loading");
 
   /* ── Contract Read-Aloud state ── */
-  const [reading,     setReading]     = useState(false);
-  const [hlWordIdx,   setHlWordIdx]   = useState(-1);   // global word index being read
-  const wordListRef   = useRef([]);                     // flat word list
-  const fullTextRef   = useRef("");                     // full contract string for TTS
+  const [reading, setReading] = useState(false);
+  const [hlWordIdx, setHlWordIdx] = useState(-1);   // global word index being read
+  const wordListRef = useRef([]);                     // flat word list
+  const fullTextRef = useRef("");                     // full contract string for TTS
+
 
   /* ── load session data ── */
   useEffect(() => {
+    // Priority 1: fresh analysis from current session
     try {
       const raw = sessionStorage.getItem("legalease_analysis");
       if (raw) {
@@ -86,19 +74,41 @@ function Analysis() {
           setData({ ...parsed, clauses });
           setIsLive(true);
           setActive(clauses[0]?.id ?? null);
+          setPageState("ready");
           return;
         }
       }
-    } catch (_) {}
-    setData(MOCK);
-    setActive(MOCK.clauses[0]?.id ?? null);
+    } catch (_) { }
+
+    // Priority 2: fallback to most recent vault entry so back-nav never blanks
+    try {
+      const vault = JSON.parse(localStorage.getItem("legalease_vault") || "[]");
+      if (vault.length > 0 && vault[0]?.data?.clauses?.length) {
+        const entry = vault[0];
+        const clauses = entry.data.clauses.map((c) => ({
+          ...c,
+          risk_level: c.risk_level === "high-risk" ? "high" : c.risk_level,
+        }));
+        sessionStorage.setItem("legalease_analysis", JSON.stringify(entry.data));
+        setData({ ...entry.data, clauses });
+        setIsLive(false);
+        setActive(clauses[0]?.id ?? null);
+        setPageState("ready");
+        return;
+      }
+    } catch (_) { }
+
+    // Priority 3: nothing at all — first-time user
+    setPageState("empty");
   }, []);
+
+
 
   /* ── build word list whenever clauses change ── */
   useEffect(() => {
     if (!data?.clauses) return;
-    wordListRef.current  = buildWordList(data.clauses);
-    fullTextRef.current  = data.clauses.map((c) => c.text).join(" ");
+    wordListRef.current = buildWordList(data.clauses);
+    fullTextRef.current = data.clauses.map((c) => c.text).join(" ");
   }, [data]);
 
   /* ── cleanup TTS on unmount ── */
@@ -115,9 +125,9 @@ function Analysis() {
     const text = fullTextRef.current;
     if (!text) return;
 
-    const utterance  = new SpeechSynthesisUtterance(text);
-    utterance.rate   = 0.85;
-    utterance.lang   = "en-US";
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.85;
+    utterance.lang = "en-US";
 
     utterance.onboundary = (e) => {
       if (e.name !== "word") return;
@@ -131,7 +141,7 @@ function Analysis() {
       if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
     };
 
-    utterance.onend  = () => { setReading(false); setHlWordIdx(-1); };
+    utterance.onend = () => { setReading(false); setHlWordIdx(-1); };
     utterance.onerror = () => { setReading(false); setHlWordIdx(-1); };
 
     window.speechSynthesis.speak(utterance);
@@ -147,35 +157,37 @@ function Analysis() {
   const toggleReading = () => (reading ? stopReading() : startReading());
 
   /* ─── Derived values ────────────────────────────────────────────── */
-  const clauses  = data?.clauses ?? [];
+  const clauses = data?.clauses ?? [];
   const filtered = filter === "all" ? clauses : clauses.filter((c) => c.risk_level === filter);
   const selected = clauses.find((c) => c.id === activeClause);
-  const score    = data?.overall_score ?? 0;
-  const counts   = {
-    high:    clauses.filter((c) => c.risk_level === "high").length,
+  const score = data?.overall_score ?? 0;
+  const counts = {
+    high: clauses.filter((c) => c.risk_level === "high").length,
     warning: clauses.filter((c) => c.risk_level === "warning").length,
-    safe:    clauses.filter((c) => c.risk_level === "safe").length,
+    safe: clauses.filter((c) => c.risk_level === "safe").length,
   };
 
   // Build real-word-only list for rendering (no space tokens)
   const renderWords = wordListRef.current.filter((t) => !t.space);
 
-  if (!data) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
-    </div>
-  );
+  if (pageState === "loading") return <LoadingSkeleton />;
+  if (pageState === "empty") return <EmptyState />;
+  if (pageState === "error") return <ErrorState />;
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
 
       {/* ── Back + Title ──────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-6">
-        <Link to="/vault" className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors" title="Back to Vault">
+        <button
+          onClick={() => navigate(-1)}
+          className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
+          title="Go back"
+        >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
-        </Link>
+        </button>
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight truncate">{data.filename ?? "Contract Analysis"}</h1>
           <p className="text-sm mt-0.5">
@@ -204,9 +216,9 @@ function Analysis() {
           </p>
           <div className="flex flex-wrap gap-2 mt-4 justify-center sm:justify-start">
             {[
-              { key: "high",    bg: "bg-rose-100 text-rose-700 border-rose-200"       },
-              { key: "warning", bg: "bg-amber-100 text-amber-700 border-amber-200"    },
-              { key: "safe",    bg: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+              { key: "high", bg: "bg-rose-100 text-rose-700 border-rose-200" },
+              { key: "warning", bg: "bg-amber-100 text-amber-700 border-amber-200" },
+              { key: "safe", bg: "bg-emerald-100 text-emerald-700 border-emerald-200" },
             ].map(({ key, bg }) => (
               <span key={key} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold border ${bg}`}>
                 {riskMeta[key].emoji} {counts[key]} {riskMeta[key].label}
@@ -239,24 +251,23 @@ function Analysis() {
           {/* Read Aloud button */}
           <button
             onClick={toggleReading}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all shadow-sm ${
-              reading
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all shadow-sm ${reading
                 ? "bg-rose-500 hover:bg-rose-600"
                 : "bg-indigo-600 hover:bg-indigo-700"
-            }`}
+              }`}
           >
             {reading ? (
               <>
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <rect x="5" y="4" width="4" height="12" rx="1"/>
-                  <rect x="11" y="4" width="4" height="12" rx="1"/>
+                  <rect x="5" y="4" width="4" height="12" rx="1" />
+                  <rect x="11" y="4" width="4" height="12" rx="1" />
                 </svg>
                 Stop Reading
               </>
             ) : (
               <>
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M6.3 2.84A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.27l9.344-5.891a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                  <path d="M6.3 2.84A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.27l9.344-5.891a1.5 1.5 0 000-2.538L6.3 2.84z" />
                 </svg>
                 Read Aloud
               </>
@@ -268,7 +279,7 @@ function Analysis() {
         {reading && (
           <div className="px-5 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center gap-3">
             <div className="flex items-end gap-0.5 h-5">
-              {[2,4,6,5,3,6,4,2,5,3].map((h, i) => (
+              {[2, 4, 6, 5, 3, 6, 4, 2, 5, 3].map((h, i) => (
                 <div key={i}
                   className="w-1 bg-indigo-400 rounded-full animate-bounce"
                   style={{ height: `${h * 3}px`, animationDelay: `${i * 0.07}s` }}
@@ -282,12 +293,12 @@ function Analysis() {
         {/* Legend */}
         <div className="px-5 py-2 border-b border-slate-100 flex flex-wrap gap-3">
           {[
-            { key: "high",    label: "High Risk" },
-            { key: "warning", label: "Warning"   },
-            { key: "safe",    label: "Safe"       },
+            { key: "high", label: "High Risk" },
+            { key: "warning", label: "Warning" },
+            { key: "safe", label: "Safe" },
           ].map(({ key, label }) => (
             <span key={key} className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
-              <span className={`w-3 h-3 rounded-sm ${riskMeta[key].bg.replace("/70","").replace("/50","")}`}></span>
+              <span className={`w-3 h-3 rounded-sm ${riskMeta[key].bg.replace("/70", "").replace("/50", "")}`}></span>
               {label}
             </span>
           ))}
@@ -303,17 +314,17 @@ function Analysis() {
           className="px-6 py-6 overflow-y-auto max-h-72 font-serif text-slate-800 leading-loose text-[15px] selection:bg-blue-100"
         >
           {clauses.map((clause, ci) => {
-            const meta    = riskMeta[clause.risk_level] ?? riskMeta.safe;
+            const meta = riskMeta[clause.risk_level] ?? riskMeta.safe;
             // offset count: how many real words appear before this clause
-            const offset  = clauses.slice(0, ci).reduce((sum, c) => sum + c.text.split(/\s+/).length, 0);
-            const words   = clause.text.split(/\s+/);
+            const offset = clauses.slice(0, ci).reduce((sum, c) => sum + c.text.split(/\s+/).length, 0);
+            const words = clause.text.split(/\s+/);
 
             return (
               <span key={clause.id}>
                 {words.map((word, wi) => {
                   const globalIdx = offset + wi;
                   const isCurrentWord = reading && hlWordIdx === globalIdx;
-                  const isClauseRisk  = clause.risk_level !== "safe";
+                  const isClauseRisk = clause.risk_level !== "safe";
 
                   return (
                     <span
@@ -389,7 +400,7 @@ function Analysis() {
               <p className="text-center text-slate-400 text-sm py-10">No clauses in this category.</p>
             )}
             {filtered.map((clause) => {
-              const meta   = riskMeta[clause.risk_level] ?? riskMeta.safe;
+              const meta = riskMeta[clause.risk_level] ?? riskMeta.safe;
               const active = activeClause === clause.id;
               return (
                 <button key={clause.id} onClick={() => setActive(clause.id)}
@@ -447,10 +458,10 @@ function Analysis() {
 
 /* ── Clause Detail Card ─────────────────────────────────────────── */
 function ClauseDetail({ clause }) {
-  const meta   = riskMeta[clause.risk_level] ?? riskMeta.safe;
-  const bgMap  = { high: "bg-rose-50 border-rose-200",    warning: "bg-amber-50 border-amber-200",   safe: "bg-emerald-50 border-emerald-200" };
-  const hdMap  = { high: "text-rose-800",                  warning: "text-amber-800",                  safe: "text-emerald-800" };
-  const txtMap = { high: "text-rose-900",                  warning: "text-amber-900",                  safe: "text-emerald-900" };
+  const meta = riskMeta[clause.risk_level] ?? riskMeta.safe;
+  const bgMap = { high: "bg-rose-50 border-rose-200", warning: "bg-amber-50 border-amber-200", safe: "bg-emerald-50 border-emerald-200" };
+  const hdMap = { high: "text-rose-800", warning: "text-amber-800", safe: "text-emerald-800" };
+  const txtMap = { high: "text-rose-900", warning: "text-amber-900", safe: "text-emerald-900" };
 
   return (
     <div className={`rounded-2xl border-2 p-6 ${bgMap[clause.risk_level] ?? "bg-white border-slate-200"} animate-fade-in`}>
@@ -487,6 +498,145 @@ function ClauseDetail({ clause }) {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ══ Loading Skeleton ══════════════════════════════════════════════ */
+function LoadingSkeleton() {
+  return (
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-pulse">
+      {/* Header skeleton */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-9 h-9 bg-slate-200 rounded-xl"></div>
+        <div className="flex-1">
+          <div className="h-7 bg-slate-200 rounded-lg w-64 mb-2"></div>
+          <div className="h-4 bg-slate-100 rounded w-32"></div>
+        </div>
+      </div>
+
+      {/* Score card skeleton */}
+      <div className="flex items-center gap-6 p-6 rounded-2xl border-2 border-slate-100 bg-slate-50 mb-8">
+        <div className="w-28 h-28 rounded-full bg-slate-200 flex-shrink-0"></div>
+        <div className="flex-1 space-y-3">
+          <div className="h-7 bg-slate-200 rounded-lg w-48"></div>
+          <div className="h-4 bg-slate-100 rounded w-full"></div>
+          <div className="flex gap-2 mt-2">
+            <div className="h-7 w-24 bg-slate-200 rounded-full"></div>
+            <div className="h-7 w-24 bg-slate-200 rounded-full"></div>
+            <div className="h-7 w-20 bg-slate-200 rounded-full"></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Contract reader skeleton */}
+      <div className="rounded-2xl border-2 border-slate-100 overflow-hidden mb-8">
+        <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+          <div className="h-5 bg-slate-200 rounded w-32"></div>
+          <div className="h-8 bg-slate-200 rounded-xl w-28"></div>
+        </div>
+        <div className="p-6 space-y-3">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-4 bg-slate-100 rounded" style={{ width: `${75 + (i % 3) * 10}%` }}></div>
+          ))}
+        </div>
+      </div>
+
+      {/* Clause list skeleton */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-3">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="p-4 rounded-2xl border-2 border-slate-100 bg-white">
+              <div className="flex gap-3">
+                <div className="w-1 h-14 bg-slate-200 rounded-full flex-shrink-0"></div>
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 bg-slate-200 rounded w-20"></div>
+                  <div className="h-4 bg-slate-100 rounded w-full"></div>
+                  <div className="h-4 bg-slate-100 rounded w-3/4"></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="h-64 rounded-2xl border-2 border-slate-100 bg-slate-50"></div>
+      </div>
+    </div>
+  );
+}
+
+/* ══ Empty State — no contract uploaded ════════════════════════════ */
+function EmptyState() {
+  return (
+    <div className="max-w-lg mx-auto px-4 py-24 text-center animate-fade-in">
+      <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+        <svg className="w-10 h-10 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      </div>
+      <h1 className="text-2xl font-extrabold text-slate-800 mb-2">No Contract Analysed Yet</h1>
+      <p className="text-slate-500 font-medium mb-8">
+        Upload a contract from the Dashboard and the full AI analysis will appear here.
+      </p>
+      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        <Link to="/dashboard"
+          className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all shadow-glow">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Upload a Contract
+        </Link>
+        <Link to="/vault"
+          className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white border-2 border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all">
+          <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+          </svg>
+          View Contract Vault
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/* ══ Error State — corrupt/empty analysis data ══════════════════════ */
+function ErrorState() {
+  const navigate = useNavigate();
+  return (
+    <div className="max-w-lg mx-auto px-4 py-24 text-center animate-fade-in">
+      <div className="w-20 h-20 bg-rose-50 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+        <svg className="w-10 h-10 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      </div>
+      <h1 className="text-2xl font-extrabold text-slate-800 mb-2">Analysis Could Not Load</h1>
+      <p className="text-slate-500 font-medium mb-2">
+        The AI returned an empty or unreadable result. This can happen if:
+      </p>
+      <ul className="text-sm text-slate-400 font-medium mb-8 space-y-1 text-left inline-block">
+        <li>• The document was too short or had no recognisable clauses</li>
+        <li>• The backend timed out analysing a very large file</li>
+        <li>• The file was an unreadable image without OCR text</li>
+      </ul>
+      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        <button
+          onClick={() => { sessionStorage.removeItem("legalease_analysis"); navigate("/dashboard"); }}
+          className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all shadow-glow">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Try Again
+        </button>
+        <Link to="/vault"
+          className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white border-2 border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all">
+          <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+          </svg>
+          View Past Contracts
+        </Link>
+      </div>
     </div>
   );
 }

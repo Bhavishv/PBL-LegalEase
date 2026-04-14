@@ -1,7 +1,8 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import UploadContract from "../components/UploadContract";
 
 function Dashboard() {
+  const navigate = useNavigate();
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10 min-h-screen relative">
       {/* Decorative glow */}
@@ -9,10 +10,21 @@ function Dashboard() {
 
       {/* Header */}
       <div className="mb-10 animate-slide-in-up relative z-10">
-        <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-700 mb-3 tracking-tight">
-          Dashboard
-        </h1>
-        <p className="text-lg text-slate-600 font-medium">
+        <div className="flex items-center gap-3 mb-3">
+          <button
+            onClick={() => navigate("/")}
+            className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors flex-shrink-0"
+            title="Back to Home"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-700 tracking-tight">
+            Dashboard
+          </h1>
+        </div>
+        <p className="text-lg text-slate-600 font-medium ml-11">
           Upload a contract to get an instant AI-powered risk report.
         </p>
       </div>
