@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Tuple
 
 from knowledge_base import KNOWLEDGE_BASE
+from semantic_classifier import sbert_classify, is_sbert_available
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 _BACKEND_DIR  = Path(__file__).parent
@@ -149,17 +150,29 @@ def classify_clause(clause_text: str) -> Tuple[str, float, str]:
 
     Returns:
         risk_level     : "safe" | "warning" | "high-risk"
-        confidence     : 0.0 – 1.0  (model probability or heuristic estimate)
-        source_id      : "cuad_model" | <kb_entry_id> | "heuristic"
+        confidence     : 0.0 – 1.0  (model probability or similarity score)
+        source_id      : "cuad_model" | "sbert" | <kb_entry_id> | "heuristic"
     """
-    # ── Priority 1: CUAD-trained ML model ────────────────────────────────────
+    # ── Priority 1: M1 — CUAD TF-IDF + Logistic Regression ───────────────────
     if _cuad_clf is not None:
         return _cuad_classify(clause_text)
 
-    # ── Priority 2: TF-IDF KB similarity ──────────────────────────────────────
+    # ── Priority 2: M2 — Sentence-BERT semantic similarity ────────────────────
+    if is_sbert_available():
+        risk, conf, kb_id = sbert_classify(clause_text)
+        if kb_id is not None:          # above similarity threshold → trust it
+            return risk, conf, f"sbert:{kb_id}"
+        # Below threshold — fall through to TF-IDF KB
+
+    # ── Priority 3: M3 — TF-IDF KB cosine similarity ──────────────────────────
     return _kb_classify(clause_text)
 
 
 def is_cuad_model_loaded() -> bool:
-    """Returns True if the CUAD-trained model is active."""
+    """Returns True if the CUAD-trained M1 model is active."""
     return _cuad_clf is not None
+
+
+def is_sbert_model_loaded() -> bool:
+    """Returns True if the Sentence-BERT M2 model is available."""
+    return is_sbert_available()

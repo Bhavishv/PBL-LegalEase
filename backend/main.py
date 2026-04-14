@@ -102,7 +102,7 @@ def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
     trap_chains = [TrapChainResult(**t) for t in trap_chain_dicts]
 
     # 6 – Compute overall score
-    clause_dicts = [{"risk_level": c.risk_level} for c in classified]
+    clause_dicts = [{"risk_level": c.risk_level, "confidence": c.confidence} for c in classified]
     score, label, colour = compute_risk_score(clause_dicts, trap_chain_dicts)
 
     high_risk = sum(1 for c in classified if c.risk_level == "high-risk")
