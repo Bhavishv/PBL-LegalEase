@@ -19,50 +19,50 @@ from knowledge_base import KNOWLEDGE_BASE
 logger = logging.getLogger(__name__)
 
 # ── Gemini setup ──────────────────────────────────────────────────────────────
-_gemini_model = None
+_genai_client = None
 
-def _get_gemini():
-    """Lazily initialise the Gemini model once."""
-    global _gemini_model
-    if _gemini_model is not None:
-        return _gemini_model
+def _get_client():
+    """Lazily initialise the GenAI client once."""
+    global _genai_client
+    if _genai_client is not None:
+        return _genai_client
 
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         return None
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        _gemini_model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction=(
-                "You are a plain-English legal expert. Your job is to explain a single "
-                "contract clause to a non-lawyer in 2-3 simple sentences. "
-                "Be direct, use everyday language, avoid legal jargon. "
-                "Always end with what the practical consequence is for the person signing. "
-                "Do NOT include any markdown, bullet points, or formatting."
-            ),
-        )
-        logger.info("Gemini model initialised successfully.")
+        from google import genai
+        _genai_client = genai.Client(api_key=api_key)
+        logger.info("GenAI client initialised successfully.")
     except Exception as e:
-        logger.warning(f"Gemini initialisation failed: {e}")
-        _gemini_model = None
+        logger.warning(f"GenAI client initialisation failed: {e}")
+        _genai_client = None
 
-    return _gemini_model
+    return _genai_client
 
 
 def _gemini_explain(clause_text: str, risk_level: str) -> Optional[str]:
     """Call Gemini to generate a dynamic explanation. Returns None on failure."""
-    model = _get_gemini()
-    if model is None:
+    client = _get_client()
+    if client is None:
         return None
+
+    model_name = os.getenv("GEMINI_MODEL", "").strip() or "gemini-2.0-flash"
 
     risk_hint = {
         "high-risk": "This clause is HIGH RISK.",
         "warning":   "This clause has a WARNING level risk.",
         "safe":      "This clause appears SAFE.",
     }.get(risk_level, "")
+
+    system_instruction = (
+        "You are a plain-English legal expert. Your job is to explain a single "
+        "contract clause to a non-lawyer in 2-3 simple sentences. "
+        "Be direct, use everyday language, avoid legal jargon. "
+        "Always end with what the practical consequence is for the person signing. "
+        "Do NOT include any markdown, bullet points, or formatting."
+    )
 
     prompt = (
         f"{risk_hint}\n\n"
@@ -72,11 +72,17 @@ def _gemini_explain(clause_text: str, risk_level: str) -> Optional[str]:
     )
 
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config={"max_output_tokens": 150, "temperature": 0.3},
+        from google.genai import types
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                max_output_tokens=150,
+                temperature=0.3,
+            ),
         )
-        text = response.text.strip()
+        text = (response.text or "").strip()
         if text:
             return text
     except Exception as e:

@@ -32,6 +32,21 @@ from plain_english import generate_explanation
 from trap_chain_detector import detect_trap_chains
 from risk_scorer import compute_risk_score
 
+_genai_client = None
+
+def _get_genai_client():
+    global _genai_client
+    if _genai_client is not None:
+        return _genai_client
+
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return None
+
+    from google import genai
+    _genai_client = genai.Client(api_key=api_key)
+    return _genai_client
+
 # ── App setup ────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="LegalEase AI Backend",
@@ -149,8 +164,8 @@ def health_check():
 
 @app.post("/api/analyze", response_model=AnalysisResponse)
 async def analyze_file(file: UploadFile = File(...)):
-    """Upload a contract file (PDF / DOCX / TXT) and receive full analysis."""
-    allowed = {"pdf", "docx", "doc", "txt"}
+    """Upload a contract file (PDF / DOCX / TXT / image) and receive full analysis."""
+    allowed = {"pdf", "docx", "doc", "txt", "png", "jpg", "jpeg"}
     ext = file.filename.lower().rsplit(".", 1)[-1] if "." in file.filename else ""
     if ext not in allowed:
         raise HTTPException(
@@ -187,8 +202,12 @@ def chat_with_contract(body: ChatRequest):
         )
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
+        client = _get_genai_client()
+        if client is None:
+            return ChatResponse(
+                reply="The Gemini API key is not configured. Please add GEMINI_API_KEY to your .env file.",
+                error="no_api_key",
+            )
 
         system_prompt = (
             f"You are LegalEase AI, an expert legal assistant. "
@@ -199,25 +218,60 @@ def chat_with_contract(body: ChatRequest):
             f"=== CONTRACT TEXT ===\n{body.contract_text[:8000]}\n=== END CONTRACT ==="
         )
 
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction=system_prompt,
+        model_name = os.getenv("GEMINI_MODEL", "").strip() or "gemini-2.0-flash"
+
+        from google.genai import types
+
+        # Build history in google-genai format
+        contents = []
+        for msg in body.history:
+            role = msg.role if msg.role in ("user", "model") else "user"
+            contents.append(
+                types.Content(role=role, parts=[types.Part.from_text(text=msg.content)])
+            )
+        contents.append(
+            types.Content(role="user", parts=[types.Part.from_text(text=body.message)])
         )
 
-        # Build history in Gemini format
-        gemini_history = [
-            {"role": msg.role, "parts": [msg.content]}
-            for msg in body.history
-        ]
+        response = client.models.generate_content(
+            model=model_name,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.3,
+                max_output_tokens=450,
+            ),
+        )
 
-        chat = model.start_chat(history=gemini_history)
-        response = chat.send_message(body.message)
-        return ChatResponse(reply=response.text.strip())
+        reply = (response.text or "").strip()
+        if not reply:
+            reply = "Sorry — I didn't get a response back. Please try again."
+        return ChatResponse(reply=reply)
 
     except Exception as e:
+        msg = str(e)
+        low = msg.lower()
+        if "403" in low and ("denied access" in low or "permission" in low):
+            return ChatResponse(
+                reply=(
+                    "Gemini rejected the request (403). "
+                    "This usually means the API key's project does not have Gemini API access enabled "
+                    "or billing/permissions are not set up."
+                ),
+                error=msg,
+            )
+        if "429" in low or "resource_exhausted" in low or "quota" in low:
+            return ChatResponse(
+                reply=(
+                    "Gemini rate-limit/quota was exceeded (429). "
+                    "This API key's project appears to have zero free-tier quota enabled, "
+                    "so you may need to enable billing/upgrade your plan or adjust your quota settings."
+                ),
+                error=msg,
+            )
         return ChatResponse(
             reply="Sorry, I couldn't process that question. Please try again.",
-            error=str(e)
+            error=msg
         )
 
 

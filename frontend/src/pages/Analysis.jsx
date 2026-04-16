@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { chatWithContract } from "../services/api";
 
 /* ─── risk helpers ───────────────────────────────────────────────── */
 const riskMeta = {
@@ -45,12 +46,17 @@ function buildWordList(clauses) {
 function Analysis() {
   const navigate = useNavigate();
   const readerRef = useRef(null);
+  const chatScrollRef = useRef(null);
 
   const [data, setData] = useState(null);
   const [isLive, setIsLive] = useState(false);
   const [activeClause, setActive] = useState(null);
   const [filter, setFilter] = useState("all");
   const [pageState, setPageState] = useState("loading");
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatStatus, setChatStatus] = useState("idle");
+  const [chatError, setChatError] = useState("");
 
   /* ── Contract Read-Aloud state ── */
   const [reading, setReading] = useState(false);
@@ -111,6 +117,35 @@ function Analysis() {
     fullTextRef.current = data.clauses.map((c) => c.text).join(" ");
   }, [data]);
 
+  useEffect(() => {
+    if (!data?.filename) return;
+    const storageKey = `legalease_chat_${data.filename}`;
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      if (!raw) {
+        setChatMessages([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      setChatMessages(Array.isArray(parsed) ? parsed : []);
+    } catch (_) {
+      setChatMessages([]);
+    }
+  }, [data?.filename]);
+
+  useEffect(() => {
+    if (!data?.filename) return;
+    const storageKey = `legalease_chat_${data.filename}`;
+    sessionStorage.setItem(storageKey, JSON.stringify(chatMessages));
+  }, [chatMessages, data?.filename]);
+
+  useEffect(() => {
+    chatScrollRef.current?.scrollTo({
+      top: chatScrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [chatMessages, chatStatus]);
+
   /* ── cleanup TTS on unmount ── */
   useEffect(() => () => window.speechSynthesis?.cancel(), []);
 
@@ -155,6 +190,56 @@ function Analysis() {
   };
 
   const toggleReading = () => (reading ? stopReading() : startReading());
+
+  const handleChatSubmit = async (e) => {
+    e.preventDefault();
+    const message = chatInput.trim();
+    const contractText = fullTextRef.current.trim();
+
+    if (!message || chatStatus === "loading") return;
+    if (!contractText) {
+      setChatError("No contract text is available to answer questions yet.");
+      return;
+    }
+
+    const nextUserMessage = { role: "user", content: message };
+    const nextHistory = [...chatMessages, nextUserMessage];
+
+    setChatInput("");
+    setChatError("");
+    setChatStatus("loading");
+    setChatMessages(nextHistory);
+
+    try {
+      const result = await chatWithContract({
+        contractText,
+        contractFilename: data?.filename ?? "contract.txt",
+        history: chatMessages,
+        message,
+      });
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: result.reply || "No reply received.",
+        },
+      ]);
+
+      if (result.error) {
+        setChatError(
+          result.error === "no_api_key"
+            ? "Gemini API key is not configured on the backend."
+            : ""
+        );
+      }
+    } catch (err) {
+      setChatMessages((prev) => prev.slice(0, -1));
+      setChatError(err.message || "Chat request failed. Please try again.");
+    } finally {
+      setChatStatus("idle");
+    }
+  };
 
   /* ─── Derived values ────────────────────────────────────────────── */
   const clauses = data?.clauses ?? [];
@@ -435,6 +520,89 @@ function Analysis() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Contract Chat ─────────────────────────────────────── */}
+      <div className="mt-8 bg-white border-2 border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">Ask About This Contract</h2>
+            <p className="text-sm text-slate-600 mt-1">
+              Ask follow-up questions about obligations, risks, negotiation points, or missing protections.
+            </p>
+          </div>
+          <span className="text-xs font-semibold text-slate-400">
+            Uses the analyzed contract as context
+          </span>
+        </div>
+
+        <div
+          ref={chatScrollRef}
+          className="max-h-96 overflow-y-auto px-5 py-5 space-y-3 bg-slate-50/60"
+        >
+          {chatMessages.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-5 text-sm text-slate-500">
+              Try asking: "What is the riskiest clause?", "What should I negotiate first?", or "Summarize my payment obligations."
+            </div>
+          ) : (
+            chatMessages.map((msg, idx) => (
+              <div
+                key={`${msg.role}-${idx}`}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-3xl rounded-2xl px-4 py-3 shadow-sm border ${
+                    msg.role === "user"
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-slate-700 border-slate-200"
+                  }`}
+                >
+                  <p className="text-xs font-bold uppercase tracking-wide opacity-70 mb-1">
+                    {msg.role === "user" ? "You" : "LegalEase AI"}
+                  </p>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                </div>
+              </div>
+            ))
+          )}
+
+          {chatStatus === "loading" && (
+            <div className="flex justify-start">
+              <div className="max-w-3xl rounded-2xl px-4 py-3 shadow-sm border bg-white text-slate-700 border-slate-200">
+                <p className="text-xs font-bold uppercase tracking-wide opacity-70 mb-1">LegalEase AI</p>
+                <p className="text-sm leading-relaxed">Thinking about your contract...</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={handleChatSubmit} className="p-5 border-t border-slate-100 bg-white">
+          <label htmlFor="contract-chat" className="sr-only">
+            Ask a question about this contract
+          </label>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <textarea
+              id="contract-chat"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Ask a question about this contract..."
+              rows={3}
+              className="flex-1 rounded-2xl border-2 border-slate-200 px-4 py-3 text-sm text-slate-700 resize-none focus:outline-none focus:border-blue-500 bg-slate-50"
+              disabled={chatStatus === "loading" || pageState !== "ready"}
+            />
+            <button
+              type="submit"
+              disabled={chatStatus === "loading" || !chatInput.trim() || pageState !== "ready"}
+              className="sm:self-end px-5 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:from-blue-700 hover:to-indigo-700 disabled:from-slate-200 disabled:to-slate-300 disabled:text-slate-400 disabled:cursor-not-allowed transition-all"
+            >
+              {chatStatus === "loading" ? "Asking..." : "Ask AI"}
+            </button>
+          </div>
+
+          {chatError && (
+            <p className="mt-3 text-sm font-medium text-rose-600">{chatError}</p>
+          )}
+        </form>
       </div>
 
       {/* ── Bottom CTA ─────────────────────────────────────────── */}
