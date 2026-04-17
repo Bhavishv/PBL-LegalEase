@@ -15,7 +15,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     # Using gemini-3-flash for speed and efficiency in PBL context
-    model = genai.GenerativeModel("gemini-3-flash")
+    model = genai.GenerativeModel("gemini-1.5-flash")
 else:
     model = None
 

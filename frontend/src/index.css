@@ -28,11 +28,28 @@ body {
   min-height: 100vh;
   background-color: #f8fafc;
   color: #0f172a;
+  position: relative;
+}
+
+/* Subtle legal background on all pages */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url('/legal-bg.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.04;
+  pointer-events: none;
+  z-index: 0;
 }
 
 #root {
   width: 100%;
   min-height: 100vh;
+  position: relative;
+  z-index: 1;
 }
 
 /* Form inputs - consistent styling */

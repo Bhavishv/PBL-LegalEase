@@ -97,3 +97,26 @@ export const postComment = async (commentData) => {
   if (!response.ok) throw new Error("Failed to post comment");
   return response.json();
 };
+
+/**
+ * Fetch Gemini-powered crowd risk intelligence data.
+ * Returns { clauses: [...], total_analyzed, contributors, last_updated }
+ */
+export const getCrowdIntel = async () => {
+  const response = await fetch("/api/crowd-intel");
+  if (!response.ok) throw new Error("Failed to fetch crowd intelligence");
+  return response.json();
+};
+
+/**
+ * Send a chat message about a contract to Gemini.
+ */
+export const sendChatMessage = async ({ contract_text, contract_filename, history, message }) => {
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contract_text, contract_filename, history, message }),
+  });
+  if (!response.ok) throw new Error("Chat request failed");
+  return response.json();
+};
