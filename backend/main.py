@@ -17,6 +17,7 @@ Pipeline:
 
 import os
 import uuid
+from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -31,6 +32,9 @@ from risk_classifier import classify_clause
 from plain_english import generate_explanation
 from trap_chain_detector import detect_trap_chains
 from risk_scorer import compute_risk_score
+from translator import translate_text
+from ai_service import get_redline_suggestion, extract_contract_entities, extract_financial_data, analyze_gdpr_compliance
+from database import save_contract_analysis, get_comments, add_comment
 
 # ── App setup ────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -55,6 +59,7 @@ class ClauseResult(BaseModel):
     risk_level: str           # "safe" | "warning" | "high-risk"
     confidence: float
     explanation: str
+    suggested_redline: Optional[str] = None
     matched_kb_id: Optional[str] = None
 
 class TrapChainResult(BaseModel):
@@ -73,6 +78,9 @@ class AnalysisResponse(BaseModel):
     safe_count: int
     trap_chains: List[TrapChainResult]
     clauses: List[ClauseResult]
+    entities: Optional[Dict[str, Any]] = None
+    financial_data: Optional[List[Dict[str, Any]]] = None
+    compliance: Optional[Dict[str, Any]] = None
 
 class TextRequest(BaseModel):
     text: str
@@ -92,6 +100,13 @@ class ChatResponse(BaseModel):
     reply: str
     error: Optional[str] = None
 
+class TranslateRequest(BaseModel):
+    text: str
+    target_lang: str    # 'hi' | 'mr' | etc.
+
+class TranslateResponse(BaseModel):
+    translated_text: str
+
 # ── Core pipeline function ────────────────────────────────────────────────────
 
 def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
@@ -105,14 +120,26 @@ def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
             continue
         risk_level, confidence, kb_id = classify_clause(clause_text)
         explanation = generate_explanation(clause_text, kb_id, risk_level)
+        
+        # ─── NEW: Suggest redline for warnings and high-risk clauses ─────
+        redline = None
+        if risk_level in ("warning", "high-risk"):
+            redline = get_redline_suggestion(clause_text, risk_level)
+            
         classified.append(ClauseResult(
             id=f"c{i+1}_{uuid.uuid4().hex[:6]}",
             text=clause_text,
             risk_level=risk_level,
             confidence=round(confidence, 3),
             explanation=explanation,
+            suggested_redline=redline,
             matched_kb_id=kb_id,
         ))
+
+    # 4b ─── NEW: Extract contract-wide entities, Finance & Compliance ──
+    entities = extract_contract_entities(raw_text)
+    financials = extract_financial_data(raw_text)
+    compliance = analyze_gdpr_compliance(raw_text)
 
     # 5 – Detect trap chains (on original clause strings)
     raw_clauses_for_trap = [c.text for c in classified]
@@ -138,6 +165,9 @@ def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
         safe_count=safe,
         trap_chains=trap_chains,
         clauses=classified,
+        entities=entities,
+        financial_data=financials,
+        compliance=compliance,
     )
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -219,6 +249,80 @@ def chat_with_contract(body: ChatRequest):
             reply="Sorry, I couldn't process that question. Please try again.",
             error=str(e)
         )
+
+
+# ── Translate endpoint ────────────────────────────────────────────────────────
+
+@app.post("/api/translate", response_model=TranslateResponse)
+def translate(body: TranslateRequest):
+    """Translate text to a target language on-demand."""
+    if not body.text.strip():
+        raise HTTPException(status_code=400, detail="Text is empty.")
+    try:
+        translated = translate_text(body.text, body.target_lang)
+        return TranslateResponse(translated_text=translated)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Diff / Version Compare endpoint ──────────────────────────────────────────
+
+class DiffRequest(BaseModel):
+    text1: str
+    text2: str
+
+@app.post("/api/diff")
+def compare_versions(body: DiffRequest):
+    """
+    Compare two versions of a contract using Gemini.
+    Returns a list of diff objects for the UI.
+    """
+    import json
+    from ai_service import model
+    if not model:
+        return {"diff": []}
+
+    prompt = f"""
+    You are a legal document expert. Compare these two versions of a contract and identify key changes.
+    Version 1:
+    {body.text1}
+
+    Version 2:
+    {body.text2}
+
+    Respond with a JSON list of objects. Each object should have:
+    - "id": unique string
+    - "section": heading name
+    - "original": text from V1
+    - "modified": text from V2
+    - "changes": A list of parts with type "unchanged", "added", or "removed".
+
+    Respond ONLY with valid JSON.
+    """
+    try:
+        response = model.generate_content(prompt)
+        raw_json = response.text.strip().replace("```json", "").replace("```", "").strip()
+        return {"diff": json.loads(raw_json)}
+    except Exception as e:
+        return {"diff": [], "error": str(e)}
+
+
+# ─── Collaboration (Comments) ────────────────────────────────────────────────
+
+class CommentRequest(BaseModel):
+    contract_id: str
+    author: str
+    text: str
+    clause_id: Optional[str] = None
+
+@app.get("/api/contracts/{contract_id}/comments")
+async def fetch_comments(contract_id: str):
+    return {"comments": await get_comments(contract_id)}
+
+@app.post("/api/comments")
+async def post_comment(body: CommentRequest):
+    cid = await add_comment(body.contract_id, body.author, body.text, body.clause_id)
+    return {"id": cid, "message": "Comment added successfully."}
 
 
 # ── Run directly ─────────────────────────────────────────────────────────────
