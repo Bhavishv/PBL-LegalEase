@@ -33,7 +33,13 @@ from plain_english import generate_explanation
 from trap_chain_detector import detect_trap_chains
 from risk_scorer import compute_risk_score
 from translator import translate_text
-from ai_service import get_redline_suggestion, extract_contract_entities, extract_financial_data, analyze_gdpr_compliance
+from ai_service import (
+    get_redline_suggestion, 
+    get_negotiation_advice, 
+    extract_contract_entities, 
+    extract_financial_data, 
+    analyze_gdpr_compliance
+)
 from database import save_contract_analysis, get_comments, add_comment
 
 # ── App setup ────────────────────────────────────────────────────────────────
@@ -60,6 +66,7 @@ class ClauseResult(BaseModel):
     confidence: float
     explanation: str
     suggested_redline: Optional[str] = None
+    negotiation_advice: Optional[str] = None
     matched_kb_id: Optional[str] = None
 
 class TrapChainResult(BaseModel):
@@ -96,6 +103,11 @@ class ChatRequest(BaseModel):
     history: List[ChatMessage]  # previous turns
     message: str                # new user message
 
+class ChatRequest(BaseModel):
+    contract_text: str
+    query: str
+    history: List[Dict[str, str]] = []
+
 class ChatResponse(BaseModel):
     reply: str
     error: Optional[str] = None
@@ -121,10 +133,12 @@ def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
         risk_level, confidence, kb_id = classify_clause(clause_text)
         explanation = generate_explanation(clause_text, kb_id, risk_level)
         
-        # ─── NEW: Suggest redline for warnings and high-risk clauses ─────
+        # ─── NEW: Suggest redline and negotiation advice for risky clauses ──
         redline = None
+        advice = None
         if risk_level in ("warning", "high-risk"):
             redline = get_redline_suggestion(clause_text, risk_level)
+            advice = get_negotiation_advice(clause_text, risk_level)
             
         classified.append(ClauseResult(
             id=f"c{i+1}_{uuid.uuid4().hex[:6]}",
@@ -133,6 +147,7 @@ def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
             confidence=round(confidence, 3),
             explanation=explanation,
             suggested_redline=redline,
+            negotiation_advice=advice,
             matched_kb_id=kb_id,
         ))
 
@@ -174,7 +189,18 @@ def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
 
 @app.get("/")
 def health_check():
-    return {"status": "ok", "service": "LegalEase AI Backend v1.0.0"}
+    return {"status": "ok", "service": "LegalEase AI Backend v1.1.0 (Advanced Features & Chat)"}
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat_with_contract(req: ChatRequest):
+    """
+    Interactive Q&A using contract context.
+    """
+    try:
+        reply = get_chat_response(req.contract_text, req.query, req.history)
+        return ChatResponse(reply=reply)
+    except Exception as e:
+        return ChatResponse(reply="I'm sorry, I couldn't process that request.", error=str(e))
 
 
 @app.post("/api/analyze", response_model=AnalysisResponse)

@@ -111,11 +111,11 @@ export const getCrowdIntel = async () => {
 /**
  * Send a chat message about a contract to Gemini.
  */
-export const sendChatMessage = async ({ contract_text, contract_filename, history, message }) => {
+export const sendChatMessage = async ({ contract_text, history, query }) => {
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contract_text, contract_filename, history, message }),
+    body: JSON.stringify({ contract_text, history, query }),
   });
   if (!response.ok) throw new Error("Chat request failed");
   return response.json();
