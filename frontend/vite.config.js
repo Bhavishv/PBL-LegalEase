@@ -17,6 +17,10 @@ export default defineConfig({
         target: 'http://localhost:5000',
         changeOrigin: true,
       },
+      '/api/analysis': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
       // FastAPI Python routes (AI analysis & crowd intel)
       '/api': {
         target: 'http://localhost:8000',

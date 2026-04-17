@@ -409,7 +409,7 @@ function ChatOverlay({ onClose, fullText }) {
           </div>
           {history.map((h, i) => (
             <div key={i} className={`flex ${h.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-               <div className={`max-w-[85%] p-4 rounded-2xl text-sm font-bold shadow-sm ${h.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white text-slate-800 border-slate-100 rounded-tl-none'}`}>
+               <div className={`max-w-[90%] p-4 rounded-2xl text-sm font-medium shadow-sm whitespace-pre-wrap leading-relaxed ${h.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white text-slate-800 border-slate-100 rounded-tl-none border'}`}>
                  {h.text}
                </div>
             </div>

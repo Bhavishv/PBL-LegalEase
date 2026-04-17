@@ -10,6 +10,8 @@ import Analysis from "./pages/Analysis";
 import VersionCompare from "./pages/VersionCompare";
 import CrowdIntel from "./pages/CrowdIntel";
 import ContractVault from "./pages/ContractVault";
+import LegalAI from "./pages/LegalAI";
+import Glossary from "./pages/Glossary";
 
 function App() {
   return (
@@ -24,6 +26,8 @@ function App() {
         <Route path="/version-compare" element={<Layout><VersionCompare /></Layout>} />
         <Route path="/crowd-intel" element={<Layout><CrowdIntel /></Layout>} />
         <Route path="/vault" element={<Layout><ContractVault /></Layout>} />
+        <Route path="/legal-ai" element={<Layout><LegalAI /></Layout>} />
+        <Route path="/glossary" element={<Layout><Glossary /></Layout>} />
       </Routes>
     </BrowserRouter>
   );

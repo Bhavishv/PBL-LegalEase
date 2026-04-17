@@ -1,21 +1,28 @@
+import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 // Auth pages where we show minimal nav (sign in / sign up)
 const AUTH_PAGES = ["/signin", "/signup"];
 
 // Pages that belong to authenticated users
-const APP_PAGES = ["/dashboard", "/analysis", "/version-compare", "/crowd-intel", "/vault"];
+const APP_PAGES = ["/dashboard", "/analysis", "/version-compare", "/crowd-intel", "/vault", "/legal-ai", "/glossary"];
 
 function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    const user = localStorage.getItem("user");
+    setIsLoggedIn(!!user);
+  }, [location]);
 
   const isAuthPage = AUTH_PAGES.includes(location.pathname);
-  const isAppPage = APP_PAGES.some((p) => location.pathname.startsWith(p));
-
+  
   const handleSignOut = () => {
-    localStorage.removeItem("legalease_token");
+    localStorage.removeItem("user");
     sessionStorage.removeItem("legalease_analysis");
+    setIsLoggedIn(false);
     navigate("/signin");
   };
 
@@ -23,19 +30,20 @@ function Navbar() {
   if (isAuthPage) {
     return (
       <nav className="sticky top-0 z-50 glass border-b border-slate-200/50 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link
-              to="/"
-              className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-600"
+              to={isLoggedIn ? "/dashboard" : "/"}
+              className="text-2xl font-black tracking-tighter text-slate-900 flex items-center gap-2 group"
             >
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white scale-90 group-hover:rotate-12 transition-transform">L</div>
               LegalEase
             </Link>
             <Link
               to={location.pathname === "/signin" ? "/signup" : "/signin"}
-              className="text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors"
+              className="text-sm font-bold text-slate-600 hover:text-blue-600 transition-colors bg-slate-50 px-4 py-2 rounded-xl"
             >
-              {location.pathname === "/signin" ? "Create account →" : "Sign in →"}
+              {location.pathname === "/signin" ? "Create Account" : "Sign In"}
             </Link>
           </div>
         </div>
@@ -44,56 +52,59 @@ function Navbar() {
   }
 
   return (
-    <nav className="sticky top-0 z-50 glass border-b border-slate-200/50 shadow-sm transition-smooth">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+    <nav className="sticky top-0 z-50 glass border-b border-slate-200/60 transition-smooth">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-20">
 
           {/* Logo */}
           <Link
-            to={isAppPage ? "/dashboard" : "/"}
-            className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-600 hover:from-blue-600 hover:to-indigo-500 transition-colors duration-200"
+            to={isLoggedIn ? "/dashboard" : "/"}
+            className="text-2xl font-black tracking-tighter text-slate-900 flex items-center gap-2 group"
           >
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white scale-90 group-hover:rotate-12 transition-transform">L</div>
             LegalEase
           </Link>
 
           {/* Navigation links */}
           <div className="flex items-center gap-1 sm:gap-2">
 
-            {isAppPage ? (
+            {isLoggedIn ? (
               /* ── Authenticated App Nav ── */
-              <>  
+              <div className="flex items-center gap-2">  
                 <NavLink to="/dashboard"      label="Dashboard"    current={location.pathname} />
-                <NavLink to="/vault"          label="Contract Vault" current={location.pathname} />
-                <NavLink to="/crowd-intel"    label="Crowd Intel"  current={location.pathname} />
+                <NavLink to="/vault"          label="Vault" current={location.pathname} />
+                <NavLink to="/legal-ai"       label="Legal AI"     current={location.pathname} />
+                <NavLink to="/glossary"       label="Glossary"     current={location.pathname} />
+                <NavLink to="/crowd-intel"    label="Community"  current={location.pathname} />
 
-                <span className="text-slate-300 mx-1 hidden sm:inline">|</span>
+                <div className="h-6 w-[1px] bg-slate-200 mx-2 hidden sm:block"></div>
 
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="btn-haptic text-sm font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  className="btn-haptic text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 px-4 py-2.5 rounded-xl transition-all shadow-lg shadow-slate-900/10"
                 >
-                  Sign Out
+                  Log Out
                 </button>
-              </>
+              </div>
             ) : (
               /* ── Public / Landing Nav ── */
-              <>
+              <div className="flex items-center gap-4">
                 <NavLink to="/" label="Home" current={location.pathname} />
 
                 <Link
                   to="/signin"
-                  className="btn-haptic text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-100/80 transition-all"
+                  className="btn-haptic text-sm font-bold text-slate-600 hover:text-slate-900 px-4 py-2 rounded-xl hover:bg-slate-100/80 transition-all font-display"
                 >
                   Sign In
                 </Link>
                 <Link
                   to="/signup"
-                  className="btn-haptic inline-flex items-center px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl hover:from-blue-700 hover:to-indigo-700 shadow-glow hover:shadow-glow-hover transition-all"
+                  className="btn-haptic inline-flex items-center px-6 py-3 text-sm font-bold text-white bg-blue-600 rounded-2xl hover:bg-blue-700 shadow-xl shadow-blue-600/20 transition-all"
                 >
                   Get Started
                 </Link>
-              </>
+              </div>
             )}
           </div>
         </div>

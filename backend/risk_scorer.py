@@ -62,7 +62,7 @@ def compute_risk_score(
         confidence = float(clause.get("confidence", 0.5))
         key        = "high_conf" if confidence >= _HIGH_CONF_THRESHOLD else "low_conf"
 
-        if level == "high-risk":
+        if level in ("high-risk", "high"):
             risk_deduction += _DEDUCT["high-risk"][key]
         elif level == "warning":
             warn_deduction += _DEDUCT["warning"][key]

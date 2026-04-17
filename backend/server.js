@@ -22,6 +22,7 @@ app.use(cors());
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/scan', require('./routes/scanRoutes'));
+app.use('/api/analysis', require('./routes/analysisRoutes'));
 
 // Default Route
 app.get('/', (req, res) => {
