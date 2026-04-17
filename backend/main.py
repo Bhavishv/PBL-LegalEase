@@ -15,12 +15,16 @@ Pipeline:
   6. Compute overall risk score
 """
 
+import os
 import uuid
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
+from dotenv import load_dotenv
+
+load_dotenv()  # loads GEMINI_API_KEY and other vars from .env
 
 from text_extractor import extract_text
 from clause_segmenter import segment_clauses
@@ -82,6 +86,20 @@ class TextRequest(BaseModel):
     text: str
     filename: Optional[str] = "contract.txt"
 
+class ChatMessage(BaseModel):
+    role: str   # "user" | "model"
+    content: str
+
+class ChatRequest(BaseModel):
+    contract_text: str          # full contract text for context
+    contract_filename: str
+    history: List[ChatMessage]  # previous turns
+    message: str                # new user message
+
+class ChatResponse(BaseModel):
+    reply: str
+    error: Optional[str] = None
+
 class TranslateRequest(BaseModel):
     text: str
     target_lang: str    # 'hi' | 'mr' | etc.
@@ -129,7 +147,7 @@ def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
     trap_chains = [TrapChainResult(**t) for t in trap_chain_dicts]
 
     # 6 – Compute overall score
-    clause_dicts = [{"risk_level": c.risk_level} for c in classified]
+    clause_dicts = [{"risk_level": c.risk_level, "confidence": c.confidence} for c in classified]
     score, label, colour = compute_risk_score(clause_dicts, trap_chain_dicts)
 
     high_risk = sum(1 for c in classified if c.risk_level == "high-risk")
@@ -186,6 +204,55 @@ def analyze_text(body: TextRequest):
     return _run_pipeline(body.text, body.filename or "contract.txt")
 
 
+# ── Chat endpoint ─────────────────────────────────────────────────────────────
+
+@app.post("/api/chat", response_model=ChatResponse)
+def chat_with_contract(body: ChatRequest):
+    """Ask Gemini anything about the uploaded contract."""
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return ChatResponse(
+            reply="The Gemini API key is not configured. Please add GEMINI_API_KEY to your .env file.",
+            error="no_api_key"
+        )
+
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+
+        system_prompt = (
+            f"You are LegalEase AI, an expert legal assistant. "
+            f"The user has uploaded a contract named '{body.contract_filename}'. "
+            f"You have full access to the contract text below. "
+            f"Answer the user's questions in plain English, be concise, and highlight any risks. "
+            f"Do not make up clauses that do not exist in the contract.\n\n"
+            f"=== CONTRACT TEXT ===\n{body.contract_text[:8000]}\n=== END CONTRACT ==="
+        )
+
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=system_prompt,
+        )
+
+        # Build history in Gemini format
+        gemini_history = [
+            {"role": msg.role, "parts": [msg.content]}
+            for msg in body.history
+        ]
+
+        chat = model.start_chat(history=gemini_history)
+        response = chat.send_message(body.message)
+        return ChatResponse(reply=response.text.strip())
+
+    except Exception as e:
+        return ChatResponse(
+            reply="Sorry, I couldn't process that question. Please try again.",
+            error=str(e)
+        )
+
+
+# ── Translate endpoint ────────────────────────────────────────────────────────
+
 @app.post("/api/translate", response_model=TranslateResponse)
 def translate(body: TranslateRequest):
     """Translate text to a target language on-demand."""
@@ -198,6 +265,8 @@ def translate(body: TranslateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Diff / Version Compare endpoint ──────────────────────────────────────────
+
 class DiffRequest(BaseModel):
     text1: str
     text2: str
@@ -208,25 +277,26 @@ def compare_versions(body: DiffRequest):
     Compare two versions of a contract using Gemini.
     Returns a list of diff objects for the UI.
     """
+    import json
     from ai_service import model
     if not model:
         return {"diff": []}
-        
+
     prompt = f"""
     You are a legal document expert. Compare these two versions of a contract and identify key changes.
     Version 1:
     {body.text1}
-    
+
     Version 2:
     {body.text2}
-    
+
     Respond with a JSON list of objects. Each object should have:
     - "id": unique string
     - "section": heading name
     - "original": text from V1
     - "modified": text from V2
     - "changes": A list of parts with type "unchanged", "added", or "removed".
-    
+
     Respond ONLY with valid JSON.
     """
     try:

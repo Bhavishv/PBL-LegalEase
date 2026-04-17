@@ -11,3 +11,14 @@ coverage/
 
 *.pdf
 *.docx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+env/
+.env_python
+backend/models/*.joblib
+backend/models/*.json

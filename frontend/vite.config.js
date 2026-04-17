@@ -8,12 +8,20 @@ export default defineConfig({
     host: true, // Expose on local network (0.0.0.0) so phones can connect via LAN IP
     allowedHosts: true, // Allow ngrok and other tunnel domains
     proxy: {
+      // Node.js Express routes (auth & scan)
+      '/api/auth': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+      '/api/scan': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+      // FastAPI Python routes (AI analysis & crowd intel)
       '/api': {
-        target: 'http://localhost:8000', // FastAPI Python backend
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },
   },
 })
-
-

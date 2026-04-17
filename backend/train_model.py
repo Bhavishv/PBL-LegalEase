@@ -30,13 +30,13 @@ ENCODER_PATH = MODELS_DIR / "label_encoder.joblib"
 
 # ── Add backend to sys.path (for cuad_label_mapper import) ───────────────────
 sys.path.insert(0, str(BACKEND_DIR))
-from cuad_label_mapper import get_risk_level
+from cuad_label_mapper import get_risk_level, CUAD_RISK_MAP
 
 
 # ── CUAD JSON download URL (Squad-format, no PDFs needed) ────────────────────
 CUAD_JSON_URL = (
     "https://huggingface.co/datasets/theatticusproject/cuad/resolve/main/"
-    "CUAD_v1.json"
+    "CUAD_v1/CUAD_v1.json"
 )
 CUAD_JSON_CACHE = MODELS_DIR / "CUAD_v1.json"
 
@@ -137,16 +137,32 @@ def build_dataset(cuad_split):
 
 def _extract_category(question: str) -> str:
     """
-    Pull the clause category name from the CUAD question string.
-    CUAD questions contain the category name in single quotes, e.g.:
-      "...related to 'Auto-Renewal'..."
+    Pull the clause category name from a CUAD question string.
+
+    Real CUAD v1.json questions look like:
+      'Highlight the parts (if any) of this contract related to "Governing Law"
+       that should be reviewed by a lawyer. Details: ...'
+
+    The category appears between double-quote characters ("). We also try
+    single quotes as a fallback, then do a case-insensitive lookup against
+    the known CUAD_RISK_MAP keys.
     """
     import re
-    match = re.search(r"'([^']+)'", question)
-    if match:
-        # Convert snake-case / title variations to match our map keys
-        raw = match.group(1).strip()
-        return raw
+
+    # Try double-quoted category first (real CUAD format)
+    for pattern in (r'"([^"]+)"', r"'([^']+)'"):
+        match = re.search(pattern, question)
+        if match:
+            raw = match.group(1).strip()
+            # Direct hit (case-insensitive)
+            for key in CUAD_RISK_MAP:
+                if key.lower() == raw.lower():
+                    return key
+            # Partial/fuzzy match — the question substring might be a fragment
+            for key in CUAD_RISK_MAP:
+                if key.lower() in raw.lower() or raw.lower() in key.lower():
+                    return key
+            return raw  # unknown category
     return "Unknown"
 
 

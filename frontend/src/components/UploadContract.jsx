@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import Toast from "./Toast";
 import ScannerModal from "./ScannerModal";
 import { uploadContract } from "../services/api";
+import { saveContractToVault } from "../pages/ContractVault";
 
-const ACCEPTED_TYPES = ".pdf,.doc,.docx,.png,.jpg,.jpeg";
+const ACCEPTED_TYPES = ".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 function UploadContract() {
@@ -49,14 +50,14 @@ function UploadContract() {
 
     if (!selectedFile) return false;
 
-    const validExtensions = ["pdf", "doc", "docx", "png", "jpg", "jpeg"];
+    const validExtensions = ["pdf", "doc", "docx", "png", "jpg", "jpeg", "txt"];
     const extension = selectedFile.name.split(".").pop()?.toLowerCase();
 
     // If it's a file from camera (blob), it might not have an extension, so we use MIME type check too
     const isValidFormat = (extension && validExtensions.includes(extension)) || selectedFile.type?.startsWith('image/');
 
     if (!isValidFormat) {
-      showToast("Please upload a PDF, DOC, DOCX, or image file.", "error");
+      showToast("Please upload a PDF, DOC, DOCX, TXT, or image file.", "error");
       return false;
     }
 
@@ -132,6 +133,8 @@ function UploadContract() {
 
       // Persist result for Analysis page to consume
       sessionStorage.setItem("legalease_analysis", JSON.stringify(result));
+      // Auto-save to Contract Vault (localStorage) for history
+      saveContractToVault(result);
 
       setSuccess(true);
       showToast(`Successfully analyzed ${file.name}!`, "success");
@@ -232,7 +235,7 @@ function UploadContract() {
           Upload Contract
         </h3>
         <p className="text-sm text-slate-500 mb-6 font-medium">
-          Upload a PDF, DOC, image, or scan directly with your camera to analyze for risky clauses.
+          Upload a PDF, DOC, TXT, image, or scan directly with your camera to analyze for risky clauses.
         </p>
 
         {isCameraOpen ? (
@@ -382,7 +385,7 @@ function UploadContract() {
                       Drag and drop your contract here, or{" "}
                       <span className="text-blue-600 font-bold">browse</span>
                     </p>
-                    <p className="text-xs text-slate-400 mt-2 font-medium tracking-wide">SUPPORTS PDF, DOC, DOCX, PNG, JPG</p>
+                    <p className="text-xs text-slate-400 mt-2 font-medium tracking-wide">SUPPORTS PDF, DOC, DOCX, TXT, PNG, JPG</p>
                   </div>
                   <div className="mt-4 pt-4 border-t border-slate-200 w-full relative z-20 pointer-events-auto">
                     <button 
