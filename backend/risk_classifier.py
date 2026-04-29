@@ -40,10 +40,10 @@ def _load_cuad_model():
         import joblib
         clf = joblib.load(_MODEL_PATH)
         le  = joblib.load(_ENCODER_PATH)
-        print(f"[LegalEase] ✅ CUAD model loaded from {_MODEL_PATH}")
+        print(f"[LegalEase] CUAD model loaded from {_MODEL_PATH}")
         return clf, le
     except Exception as exc:
-        print(f"[LegalEase] ⚠️  Could not load CUAD model ({exc}). Falling back to TF-IDF KB.")
+        print(f"[LegalEase] Could not load CUAD model ({exc}). Falling back to TF-IDF KB.")
         return None, None
 
 

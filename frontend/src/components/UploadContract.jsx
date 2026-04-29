@@ -32,17 +32,31 @@ function UploadContract() {
     setToast({ message, type });
   };
 
-  const handleScanComplete = async (imageUrl) => {
+  const handleScanComplete = async (imageUrls) => {
     try {
-      showToast("Fetching scanned document...", "info");
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const ext = imageUrl.split('.').pop() || 'jpg';
-      const scannedFile = new File([blob], `scanned_document_${Date.now()}.${ext}`, { type: blob.type });
-      handleFileSelect(scannedFile);
+      showToast(`Fetching ${imageUrls.length} scanned pages...`, "info");
+      
+      const filePromises = imageUrls.map(async (url, index) => {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const ext = url.split('.').pop() || 'jpg';
+        return new File([blob], `scanned_page_${index + 1}.${ext}`, { type: blob.type });
+      });
+
+      const scannedFiles = await Promise.all(filePromises);
+      
+      // If only one file, use existing flow. If multiple, we need to handle batch.
+      if (scannedFiles.length === 1) {
+        handleFileSelect(scannedFiles[0]);
+      } else {
+        // For multiple files, we set the 'file' state to the array
+        setFile(scannedFiles);
+        setPreviewUrl(null); // No preview for multiple files yet
+        showToast(`Selected ${scannedFiles.length} pages`, "success");
+      }
     } catch (error) {
-      console.error("Error fetching scanned document:", error);
-      showToast("Failed to load scanned document.", "error");
+      console.error("Error fetching scanned documents:", error);
+      showToast("Failed to load scanned documents.", "error");
     }
   };
 
@@ -247,8 +261,14 @@ function UploadContract() {
                     </div>
                   )}
                   <div className="text-center">
-                    <p className="font-black text-slate-900 truncate max-w-[250px]">{file.name}</p>
-                    <p className="text-xs font-bold text-slate-400">{(file.size / 1024).toFixed(1)} KB</p>
+                    <p className="font-black text-slate-900 truncate max-w-[250px]">
+                      {Array.isArray(file) ? `${file.length} Files Selected` : file.name}
+                    </p>
+                    <p className="text-xs font-bold text-slate-400">
+                      {Array.isArray(file) 
+                        ? `${(file.reduce((acc, f) => acc + f.size, 0) / 1024).toFixed(1)} KB Total` 
+                        : `${(file.size / 1024).toFixed(1)} KB`}
+                    </p>
                   </div>
                   {!isUploading && (
                     <button onClick={clearFile} className="btn-haptic text-xs font-black text-rose-500 uppercase tracking-widest hover:underline px-4 py-2 bg-rose-50 rounded-lg">Remove File</button>

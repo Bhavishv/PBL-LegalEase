@@ -5,8 +5,14 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    host: true, // Expose on local network (0.0.0.0) so phones can connect via LAN IP
-    allowedHosts: true, // Allow ngrok and other tunnel domains
+    host: true, 
+    port: 5188,
+    strictPort: true,
+    allowedHosts: true, 
+    hmr: {
+      protocol: 'wss',
+      clientPort: 443,
+    },
     proxy: {
       // Node.js Express routes (auth & scan)
       '/api/auth': {

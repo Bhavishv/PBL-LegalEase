@@ -52,10 +52,9 @@ const activeSessions = new Map();
 router.post('/session', (req, res) => {
   const sessionId = uuidv4();
   activeSessions.set(sessionId, {
-    status: 'pending',
+    status: 'scanning',
     createdAt: Date.now(),
-    filePath: null,
-    fileName: null
+    images: [] // Array to store multiple image metadata
   });
 
   const localIP = getLocalIP();
@@ -63,13 +62,13 @@ router.post('/session', (req, res) => {
     sessionId,
     localIP,
     backendPort: 5000,
-    frontendPort: 5173 // Vite's default; update if you use a different port
+    frontendPort: 5188 // Updated to match Vite config
   });
 });
 
 // @route   POST /api/scan/upload
-// @desc    Upload an image for a specific session ID
-// @access  Public (mobile phone uploads here)
+// @desc    Upload an image for a specific session ID (can be called multiple times)
+// @access  Public
 router.post('/upload', upload.single('image'), (req, res) => {
   try {
     const { sessionId } = req.body;
@@ -78,28 +77,44 @@ router.post('/upload', upload.single('image'), (req, res) => {
     }
 
     if (!activeSessions.has(sessionId)) {
-      // Create session if it doesn't exist just in case it expired, 
-      // but in a strict system we might reject it.
-      activeSessions.set(sessionId, { status: 'pending', createdAt: Date.now() });
+      activeSessions.set(sessionId, { status: 'scanning', createdAt: Date.now(), images: [] });
     }
 
-    // Update the session state
+    // Add image to the session's list
     const sessionData = activeSessions.get(sessionId);
-    sessionData.status = 'completed';
-    sessionData.filePath = req.file.path;
-    sessionData.fileName = req.file.filename;
+    sessionData.images.push({
+      filePath: req.file.path,
+      fileName: req.file.filename,
+      uploadedAt: Date.now()
+    });
 
-    activeSessions.set(sessionId, sessionData);
-
-    res.json({ message: 'Image uploaded successfully.' });
+    res.json({ 
+      message: 'Image uploaded successfully.',
+      count: sessionData.images.length
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server Error' });
   }
 });
 
+// @route   POST /api/scan/finish/:sessionId
+// @desc    Signal that the mobile user is done scanning all pages
+// @access  Public
+router.post('/finish/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const sessionData = activeSessions.get(sessionId);
+
+  if (!sessionData) {
+    return res.status(404).json({ message: 'Session not found.' });
+  }
+
+  sessionData.status = 'completed';
+  res.json({ message: 'Session marked as completed.', imageCount: sessionData.images.length });
+});
+
 // @route   GET /api/scan/status/:sessionId
-// @desc    Check the status of a scan session (Polling endpoint for PC)
+// @desc    Check the status of a scan session
 // @access  Public 
 router.get('/status/:sessionId', (req, res) => {
   const { sessionId } = req.params;
@@ -110,14 +125,15 @@ router.get('/status/:sessionId', (req, res) => {
   }
 
   if (sessionData.status === 'completed') {
-    // Optional: send the file directly or just send status to let client fetch it.
-    // Here we'll just send the status and the relative path so the client can fetch the image.
     res.json({
       status: 'completed',
-      imageUrl: `/api/scan/image/${sessionData.fileName}`
+      imageUrls: sessionData.images.map(img => `/api/scan/image/${img.fileName}`)
     });
   } else {
-    res.json({ status: 'pending' });
+    res.json({ 
+      status: sessionData.status,
+      count: sessionData.images.length 
+    });
   }
 });
 

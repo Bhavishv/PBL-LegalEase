@@ -1,0 +1,16 @@
+{
+  "name": "legalease-root",
+  "version": "1.0.0",
+  "description": "Root runner for LegalEase",
+  "scripts": {
+    "install-all": "npm install --prefix frontend && npm install --prefix backend",
+    "dev": "npx concurrently \"npm run dev --prefix frontend\" \"npm start --prefix backend\" \"python backend/main.py\"",
+    "dev:online": "npx concurrently --kill-others \"npm run dev --prefix frontend\" \"npm start --prefix backend\" \"python backend/main.py\" \"npx ngrok http 5188 --log stdout\"",
+    "start": "npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "ngrok": "^5.0.0-beta.2",
+    "localtunnel": "^2.0.2"
+  }
+}

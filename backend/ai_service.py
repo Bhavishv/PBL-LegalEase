@@ -5,7 +5,8 @@ ai_service.py — Multi-Model AI services for LegalEase (Mistral Primary, Gemini
 import os
 import json
 import requests
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 from typing import List, Dict, Any, Optional
 
@@ -16,12 +17,67 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 MISTRAL_MODEL = "mistral-small-latest" # Updated for better compatibility
 
-# Configure Gemini
+# Configure Gemini (New SDK)
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    GEMINI_FLASH = "gemini-1.5-flash"
+    GEMINI_PRO = "gemini-1.5-pro"
 else:
-    gemini_model = None
+    client = None
+
+def analyze_contract_contextually(full_text: str) -> Dict[str, Any]:
+    """
+    Use Gemini 1.5 Pro to perform a deep, contextual analysis of the entire contract.
+    This identifies risks that span across multiple clauses (e.g. 'Trap Chains').
+    """
+    if not client:
+        return {}
+    
+    prompt = f"""
+    You are a Senior Legal Counsel with 20 years of experience in contract law.
+    Analyze the following contract and identify all 'High Risk' and 'Warning' issues.
+    Pay special attention to 'Trap Chains' where one clause (e.g., hidden auto-renewal) 
+    interacts with another (e.g., a massive early termination fee) to create a trap.
+
+    Return a JSON object with:
+    1. "global_risk_score": 0-100 (100 is most dangerous).
+    2. "top_concerns": List of strings summarizing the biggest threats.
+    3. "clause_hints": List of objects: {{"text_snippet": "part of the clause", "risk": "high"|"warning", "reason": "why"}}
+    
+    Contract:
+    {full_text[:15000]}
+    """
+    
+    try:
+        response = client.models.generate_content(
+            model=GEMINI_PRO,
+            contents=prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json")
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        print(f"[AI Service] Contextual analysis failed: {e}")
+        return {}
+
+def extract_text_from_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> str:
+    """
+    Use Gemini 1.5 Flash to perform OCR on an image and extract text.
+    """
+    if not client:
+        return "[Error: Gemini API not configured for OCR]"
+    
+    try:
+        response = client.models.generate_content(
+            model=GEMINI_FLASH,
+            contents=[
+                "Please extract all the text from this contract document image. Maintain the structure as much as possible.",
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+            ]
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"[AI Service] OCR failed: {e}")
+        return f"[Error during OCR: {str(e)}]"
 
 def ask_ai(prompt: str, json_mode: bool = False) -> Optional[str]:
     """
@@ -52,10 +108,13 @@ def ask_ai(prompt: str, json_mode: bool = False) -> Optional[str]:
         except Exception as e:
             print(f"[AI Service] Mistral request failed: {e}")
 
-    # 2. Fallback to Gemini
-    if gemini_model:
+    # 2. Fallback to Gemini (New SDK)
+    if client:
         try:
-            response = gemini_model.generate_content(prompt)
+            response = client.models.generate_content(
+                model=GEMINI_PRO,
+                contents=prompt
+            )
             return response.text.strip()
         except Exception as e:
             print(f"[AI Service] Gemini fallback failed: {e}")
@@ -184,6 +243,65 @@ def analyze_gdpr_compliance(full_text: str) -> Dict[str, Any]:
         return json.loads(cleaned)
     except:
         return {"gdpr_status": "Unable to verify automatically.", "risks": ["Manual review recommended"]}
+
+def extract_deadlines(full_text: str) -> List[Dict[str, Any]]:
+    """Identifies all key dates and deadlines."""
+    sample_text = full_text[:8000]
+    prompt = f"""
+    Extract all key dates, deadlines, and renewal periods from this contract.
+    Return a JSON list of objects with:
+    - "title": Short name (e.g., "Termination Notice")
+    - "date": The specific date or duration (e.g., "90 days before expiry")
+    - "description": Why this date matters.
+    
+    Contract Text:
+    {sample_text}
+    """
+    result = ask_ai(prompt)
+    try:
+        cleaned = result.replace("```json", "").replace("```", "").strip()
+        start = cleaned.find('[')
+        end = cleaned.rfind(']')
+        return json.loads(cleaned[start:end+1])
+    except:
+        return []
+
+def analyze_jurisdiction(full_text: str) -> Dict[str, Any]:
+    """Analyzes the governing law and its favorability."""
+    sample_text = full_text[:8000]
+    prompt = f"""
+    Analyze the 'Governing Law' or 'Jurisdiction' of this contract.
+    Return JSON:
+    - "location": The city/state/country.
+    - "is_favorable": boolean (True if it's a standard/fair jurisdiction, False if it's a known 'corporate-friendly' tax haven or difficult location).
+    - "description": Brief explanation of why it is or isn't favorable.
+    
+    Contract Text:
+    {sample_text}
+    """
+    result = ask_ai(prompt)
+    try:
+        cleaned = result.replace("```json", "").replace("```", "").strip()
+        return json.loads(cleaned[cleaned.find('{'):cleaned.rfind('}')+1])
+    except:
+        return {"location": "Not specified", "is_favorable": True, "description": "No specific jurisdiction found; standard laws apply."}
+
+def generate_negotiation_playbook(full_text: str) -> str:
+    """Generates a high-level strategic playbook."""
+    sample_text = full_text[:8000]
+    prompt = f"""
+    You are a Master Negotiator. Based on this contract, create a 'Strategic Playbook' for the client.
+    Focus on:
+    1. The biggest 'Give' (what to concede).
+    2. The 'Non-Negotiable' (what to fight for).
+    3. The 'Leverage' (what to use as a bargaining chip).
+    
+    Keep it concise and tactical. Use Markdown formatting.
+    
+    Contract Text:
+    {sample_text}
+    """
+    return ask_ai(prompt) or "Playbook generation failed."
 
 def get_chat_response(contract_text: str, user_query: str, chat_history: List[Dict[str, str]] = []) -> str:
     """

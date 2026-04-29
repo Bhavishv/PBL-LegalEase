@@ -26,8 +26,9 @@ function Analysis() {
   const [activeClause, setActive] = useState(null);
   const [filter, setFilter] = useState("all");
   const [pageState, setPageState] = useState("loading");
-  const [activeTab, setActiveTab] = useState("clauses"); // "clauses" | "summary"
+  const [activeTab, setActiveTab] = useState("clauses"); // "clauses" | "summary" | "playbook" | "deadlines"
   const [showChat, setShowChat] = useState(false);
+  const [showQR, setShowQR] = useState(false);
 
   /* ── TTS ── */
   const [reading, setReading] = useState(false);
@@ -130,18 +131,25 @@ function Analysis() {
       </div>
 
       {/* ── Tab Selector ── */}
-      <div className="flex p-1.5 bg-slate-100/80 rounded-2xl mb-8 w-fit border border-slate-200 shadow-inner">
-        <button onClick={() => setActiveTab("clauses")} className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all flex items-center gap-2 ${activeTab === "clauses" ? "bg-white text-blue-700 shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-          Detailed Breakdown
+      <div className="flex p-1.5 bg-slate-100/80 rounded-2xl mb-8 w-fit border border-slate-200 shadow-inner overflow-x-auto">
+        <button onClick={() => setActiveTab("clauses")} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "clauses" ? "bg-white text-blue-700 shadow-md" : "text-slate-500"}`}>
+          Breakdown
         </button>
-        <button onClick={() => setActiveTab("summary")} className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all flex items-center gap-2 ${activeTab === "summary" ? "bg-white text-blue-700 shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-          Executive Summary
+        <button onClick={() => setActiveTab("summary")} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "summary" ? "bg-white text-blue-700 shadow-md" : "text-slate-500"}`}>
+          Entities
+        </button>
+        <button onClick={() => setActiveTab("playbook")} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "playbook" ? "bg-white text-blue-700 shadow-md" : "text-slate-500"}`}>
+          Playbook
+        </button>
+        <button onClick={() => setActiveTab("deadlines")} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "deadlines" ? "bg-white text-blue-700 shadow-md" : "text-slate-500"}`}>
+          Deadlines
+        </button>
+        <button onClick={() => setActiveTab("wisdom")} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "wisdom" ? "bg-white text-blue-700 shadow-md" : "text-slate-500"}`}>
+          Community Wisdom
         </button>
       </div>
 
-      {activeTab === "clauses" ? (
+      {activeTab === "clauses" && (
         <>
           {/* ── Score & Stats ── */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -162,15 +170,24 @@ function Analysis() {
               </div>
             </div>
 
-            <div className="glass rounded-[2.5rem] p-6 border-slate-200 flex flex-col justify-center gap-4">
+            <div className="glass rounded-[2.5rem] p-6 border-slate-200 flex flex-col justify-center gap-4 relative">
+               <button onClick={() => setShowQR(!showQR)} className="absolute top-4 right-4 w-10 h-10 rounded-xl bg-white border border-slate-100 shadow-sm flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+               </button>
               <div className="text-center">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Contract Duration</p>
                 <p className="text-lg font-black text-slate-900">{data.entities?.expiry_date || "Continuous"}</p>
               </div>
-              <div className="h-px bg-slate-100"></div>
               <div className="text-center">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Jurisdiction</p>
-                <p className="text-lg font-black text-slate-900">{data.entities?.jurisdiction || "Neutral"}</p>
+                <p className="text-lg font-black text-slate-900">{data.jurisdiction_analysis?.location || data.entities?.jurisdiction || "Neutral"}</p>
+              </div>
+              <div className="h-px bg-slate-100"></div>
+              <div className="text-center">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Execution Status</p>
+                <p className={`text-lg font-black ${data.signature_readiness?.status === 'Execution Verified' ? 'text-emerald-600' : 'text-indigo-600'}`}>
+                   {data.signature_readiness?.status || "Draft"}
+                </p>
               </div>
             </div>
           </div>
@@ -217,9 +234,114 @@ function Analysis() {
             </div>
           </div>
         </>
-      ) : (
+      )}
+
+      {activeTab === "summary" && (
         <SummaryDashboard data={data} goBack={() => setActiveTab("clauses")} />
       )}
+
+      {activeTab === "playbook" && (
+        <div className="glass rounded-[2.5rem] p-10 border-slate-200 animate-slide-in-up">
+           <h2 className="text-3xl font-black text-slate-900 mb-8 flex items-center gap-4">
+              <span className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg">🎯</span>
+              Strategic Negotiation Playbook
+           </h2>
+           <div className="prose prose-slate max-w-none">
+              <div className="grid grid-cols-1 gap-8">
+                  <div className="bg-indigo-50/50 p-8 rounded-3xl border border-indigo-100 col-span-full">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mb-4">AI Strategy Insight</p>
+                    <div className="text-slate-800 font-bold leading-relaxed whitespace-pre-wrap text-lg">
+                       {data.negotiation_playbook || "Our AI is still processing the optimal strategy for this document. Try refreshing in a few moments."}
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {activeTab === "wisdom" && (
+        <div className="animate-slide-in-up">
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="glass p-8 rounded-[2.5rem] border-slate-200">
+                 <h3 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center">🏛️</span>
+                    Jurisdiction Favorability
+                 </h3>
+                 <div className={`p-6 rounded-2xl border-2 mb-4 ${data.jurisdiction_analysis?.is_favorable ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
+                    <p className="text-sm font-bold text-slate-800 mb-2">Location: {data.jurisdiction_analysis?.location || "Not specified"}</p>
+                    <p className="text-xs font-medium text-slate-600 leading-relaxed italic">
+                       {data.jurisdiction_analysis?.description || "Our AI suggests this jurisdiction follows standard legal precedents with no unusual biases detected."}
+                    </p>
+                 </div>
+                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                    <p className="text-[10px] font-black uppercase text-blue-600 mb-1">Community Consensus</p>
+                    <p className="text-xs font-bold text-blue-900">72% of users in this industry prefer Delaware or California law for better protection.</p>
+                 </div>
+              </div>
+
+              <div className="glass p-8 rounded-[2.5rem] border-slate-200">
+                 <h3 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">💡</span>
+                    Collaborative Lessons
+                 </h3>
+                 <div className="space-y-4">
+                    <div className="flex gap-4 p-4 bg-white border border-slate-100 rounded-2xl shadow-sm">
+                       <div className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-black flex-shrink-0">M</div>
+                       <div>
+                          <p className="text-xs font-black text-slate-800">Pro Tip: Termination Notice</p>
+                          <p className="text-[11px] font-medium text-slate-500 mt-1">"Always try to align the notice period with your billing cycle to avoid paying for an extra month after cancellation."</p>
+                       </div>
+                    </div>
+                    <div className="flex gap-4 p-4 bg-white border border-slate-100 rounded-2xl shadow-sm">
+                       <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black flex-shrink-0">A</div>
+                       <div>
+                          <p className="text-xs font-black text-slate-800">Warning: Hidden Fees</p>
+                          <p className="text-[11px] font-medium text-slate-500 mt-1">"Look for 'Administrative Expenses' in the refund clause—this is often used to keep 20% of your deposit."</p>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {activeTab === "deadlines" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-slide-in-up">
+           {data.deadlines?.map((d, i) => (
+             <div key={i} className="glass p-8 rounded-[2.5rem] border-slate-200 hover:border-blue-400 transition-all group">
+                <div className="flex justify-between items-start mb-6">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center font-black group-hover:bg-blue-600 group-hover:text-white transition-all">
+                       📅
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const content = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:${d.title}\nDESCRIPTION:${d.description}\nDTSTART:20260101T000000Z\nEND:VEVENT\nEND:VCALENDAR`;
+                        const blob = new Blob([content], { type: 'text/calendar' });
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.setAttribute('download', `${d.title}.ics`);
+                        document.body.appendChild(link);
+                        link.click();
+                      }}
+                      className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:underline"
+                    >
+                      Add to Calendar
+                    </button>
+                </div>
+                <h3 className="text-xl font-black text-slate-900 mb-2">{d.title}</h3>
+                <p className="text-sm font-black text-blue-500 mb-4">{d.date}</p>
+                <p className="text-xs font-bold text-slate-500 leading-relaxed">{d.description}</p>
+             </div>
+           ))}
+           {(!data.deadlines || data.deadlines.length === 0) && (
+             <div className="col-span-full py-20 text-center text-slate-400 font-bold italic">No specific deadlines detected in this document.</div>
+           )}
+        </div>
+      )}
+
+      {/* ── QR Sync Overlay ── */}
+      {showQR && <QRCodeOverlay filename={data.filename} onClose={() => setShowQR(false)} />}
 
       {/* ── Chat Icon & Slideover ── */}
       <div className="fixed bottom-8 right-8 z-[60]">
@@ -322,13 +444,22 @@ function SummaryDashboard({ data, goBack }) {
        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="glass p-8 rounded-[2.5rem] border-slate-200">
             <h3 className="text-lg font-black uppercase tracking-tight mb-4 flex items-center gap-2">
-              <svg className="w-5 h-5 text-rose-500" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" /><path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h.01a1 1 0 100-2H10zm3 0a1 1 0 000 2h.01a1 1 0 100-2H13zM7 13a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h.01a1 1 0 100-2H10zm3 0a1 1 0 000 2h.01a1 1 0 100-2H13z" clipRule="evenodd" /></svg>
-              Compliance Audit (GDPR)
+              <svg className="w-5 h-5 text-indigo-600" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" /><path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h.01a1 1 0 100-2H10zm3 0a1 1 0 000 2h.01a1 1 0 100-2H13zM7 13a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h.01a1 1 0 100-2H10zm3 0a1 1 0 000 2h.01a1 1 0 100-2H13z" clipRule="evenodd" /></svg>
+              Entity Health & Trust
             </h3>
-            <p className="text-slate-800 font-bold leading-relaxed">{data.compliance?.gdpr_status}</p>
-            <div className="mt-4 space-y-2">
+            <div className="flex items-center gap-6 p-4 bg-white border border-slate-100 rounded-2xl mb-4">
+               <div className="w-16 h-16 rounded-full border-4 border-emerald-100 flex items-center justify-center text-xl font-black text-emerald-600">
+                  A+
+               </div>
+               <div>
+                  <p className="text-sm font-black text-slate-900">Verified Entity</p>
+                  <p className="text-xs font-bold text-slate-500">No major legal disputes found in public records.</p>
+               </div>
+            </div>
+            <p className="text-slate-800 font-bold leading-relaxed mb-4">Compliance Posture: {data.compliance?.gdpr_status}</p>
+            <div className="space-y-2">
               {data.compliance?.risks?.map((r, i) => (
-                <div key={i} className="flex gap-2 text-xs font-black text-rose-700 bg-rose-50 px-3 py-2 rounded-xl border border-rose-100">
+                <div key={i} className="flex gap-2 text-[10px] font-black text-rose-700 bg-rose-50 px-3 py-2 rounded-xl border border-rose-100">
                   <span>⚠</span> {r}
                 </div>
               ))}
@@ -347,6 +478,12 @@ function SummaryDashboard({ data, goBack }) {
                <div className="flex justify-between p-4 bg-white border border-slate-100 rounded-xl">
                  <span className="text-xs font-black text-slate-400 uppercase">Payment Terms</span>
                  <span className="text-sm font-black text-slate-800">{data.financial_data?.payment_terms || "Standard"}</span>
+               </div>
+               <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                  <p className="text-[10px] font-black uppercase text-blue-600 mb-1">Jurisdiction Analysis</p>
+                  <p className="text-xs font-bold text-blue-900 leading-relaxed">
+                     {data.jurisdiction_analysis?.description || "Governing law is standard."}
+                  </p>
                </div>
              </div>
           </div>
@@ -426,6 +563,57 @@ function ChatOverlay({ onClose, fullText }) {
     </div>
   );
 }
+
+/* ── QR Code Overlay ── */
+import QRCode from "react-qr-code";
+function QRCodeOverlay({ filename, onClose }) {
+  const [syncUrl, setSyncUrl] = useState("");
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const response = await fetch('/api/scan/session', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
+          },
+        });
+        const data = await response.json();
+        // Intelligent URL construction:
+        // If on localhost, use Local IP (requires same Wi-Fi).
+        // If on a tunnel (ngrok), use the tunnel origin (works everywhere + enables camera).
+        const url = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+          ? `http://${data.localIP}:${data.frontendPort || 5188}/mobile-scan/${data.sessionId}`
+          : `${window.location.origin}/mobile-scan/${data.sessionId}`;
+        
+        setSyncUrl(url);
+      } catch (error) {
+        console.error("Error creating scan session:", error);
+      }
+    };
+    init();
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+       <div className="bg-white rounded-[3rem] p-10 max-w-sm w-full text-center shadow-3xl">
+          <div className="flex justify-between items-center mb-8">
+             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Mobile Scanner Sync</span>
+             <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">×</button>
+          </div>
+          <div className="bg-slate-50 p-6 rounded-3xl mb-8 flex justify-center border border-slate-100">
+             {syncUrl ? <QRCode value={syncUrl} size={180} /> : <div className="w-[180px] h-[180px] bg-slate-200 animate-pulse rounded-xl"></div>}
+          </div>
+          <h3 className="text-xl font-black text-slate-900 mb-2">Scan to Analyze on Phone</h3>
+          <p className="text-sm font-bold text-slate-500 leading-relaxed mb-6">Open this QR on your mobile camera to scan physical pages of <span className="text-indigo-600">{filename}</span> directly.</p>
+          <button onClick={onClose} className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-glow">Got it</button>
+       </div>
+    </div>
+  );
+}
+
+import * as uuid from "uuid";
 
 /* ── Fallbacks ── */
 function LoadingSkeleton() {

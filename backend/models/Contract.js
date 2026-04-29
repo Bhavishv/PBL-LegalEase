@@ -27,7 +27,36 @@ const contractSchema = mongoose.Schema(
     high_risk_count: Number,
     warning_count: Number,
     safe_count: Number,
-    clauses: [clauseSchema]
+    clauses: [clauseSchema],
+    entities: {
+      party_a: String,
+      party_b: String,
+      effective_date: String,
+      jurisdiction: String
+    },
+    financial_data: {
+      total_value: String,
+      currency: String,
+      payment_terms: String
+    },
+    deadlines: [
+      {
+        title: String,
+        date: String,
+        description: String
+      }
+    ],
+    jurisdiction_analysis: {
+      location: String,
+      is_favorable: Boolean,
+      description: String
+    },
+    negotiation_playbook: String,
+    signature_readiness: {
+      has_signature_block: Boolean,
+      is_signed_detected: Boolean,
+      status: String
+    }
   },
   {
     timestamps: true

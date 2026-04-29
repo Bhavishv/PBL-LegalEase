@@ -5,6 +5,7 @@ text_extractor.py — Extracts raw text from PDF, DOCX, or plain TXT files.
 import io
 import PyPDF2
 from docx import Document
+from ai_service import extract_text_from_image
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -34,5 +35,8 @@ def extract_text(filename: str, file_bytes: bytes) -> str:
         return extract_text_from_docx(file_bytes)
     elif ext == "txt":
         return file_bytes.decode("utf-8", errors="replace")
+    elif ext in ("png", "jpg", "jpeg"):
+        mime = "image/png" if ext == "png" else "image/jpeg"
+        return extract_text_from_image(file_bytes, mime)
     else:
         raise ValueError(f"Unsupported file type: .{ext}")

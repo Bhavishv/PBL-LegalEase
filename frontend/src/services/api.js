@@ -2,9 +2,14 @@
  * Upload a contract file (PDF / DOCX / TXT / image) for analysis.
  * Returns the AnalysisResponse JSON from the FastAPI backend.
  */
-export const uploadContract = async (file) => {
+export const uploadContract = async (files) => {
   const formData = new FormData();
-  formData.append("file", file);
+  
+  if (Array.isArray(files)) {
+    files.forEach(file => formData.append("files", file));
+  } else {
+    formData.append("files", files);
+  }
 
   const response = await fetch("/api/analyze", {
     method: "POST",

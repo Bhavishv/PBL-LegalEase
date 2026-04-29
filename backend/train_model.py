@@ -6,8 +6,8 @@ Run once (takes ~2–5 minutes on first run to download dataset):
     python train_model.py
 
 Output:
-    backend/models/cuad_classifier.joblib   ← trained sklearn pipeline
-    backend/models/label_encoder.joblib     ← LabelEncoder for class names
+    backend/models/cuad_classifier.joblib   - trained sklearn pipeline
+    backend/models/label_encoder.joblib     - LabelEncoder for class names
 
 The saved model is consumed by risk_classifier.py at runtime.
 No GPU required.
@@ -20,7 +20,7 @@ import joblib
 import numpy as np
 from pathlib import Path
 
-# ── Resolve paths ─────────────────────────────────────────────────────────────
+# -- Resolve paths -------------------------------------------------------------
 BACKEND_DIR = Path(__file__).parent
 MODELS_DIR  = BACKEND_DIR / "models"
 MODELS_DIR.mkdir(exist_ok=True)
@@ -28,12 +28,12 @@ MODELS_DIR.mkdir(exist_ok=True)
 MODEL_PATH   = MODELS_DIR / "cuad_classifier.joblib"
 ENCODER_PATH = MODELS_DIR / "label_encoder.joblib"
 
-# ── Add backend to sys.path (for cuad_label_mapper import) ───────────────────
+# -- Add backend to sys.path (for cuad_label_mapper import) -------------------
 sys.path.insert(0, str(BACKEND_DIR))
 from cuad_label_mapper import get_risk_level, CUAD_RISK_MAP
 
 
-# ── CUAD JSON download URL (Squad-format, no PDFs needed) ────────────────────
+# -- CUAD JSON download URL (Squad-format, no PDFs needed) --------------------
 CUAD_JSON_URL = (
     "https://huggingface.co/datasets/theatticusproject/cuad/resolve/main/"
     "CUAD_v1/CUAD_v1.json"
@@ -50,22 +50,22 @@ def load_cuad() -> list:
     import json, urllib.request
 
     if not CUAD_JSON_CACHE.exists():
-        print(f"📥 Downloading CUAD_v1.json (~25 MB) from HuggingFace…")
+        print(f"Downloading CUAD_v1.json (~25 MB) from HuggingFace...")
         try:
             urllib.request.urlretrieve(CUAD_JSON_URL, CUAD_JSON_CACHE)
-            print(f"   ✓ Saved to {CUAD_JSON_CACHE}")
+            print(f"   Saved to {CUAD_JSON_CACHE}")
         except Exception as exc:
             print(f"ERROR: Could not download CUAD JSON: {exc}")
             print(f"       Please download manually from:\n       {CUAD_JSON_URL}")
             print(f"       and save to: {CUAD_JSON_CACHE}")
             sys.exit(1)
     else:
-        print(f"📥 Using cached CUAD_v1.json from {CUAD_JSON_CACHE}")
+        print(f"Using cached CUAD_v1.json from {CUAD_JSON_CACHE}")
 
     with open(CUAD_JSON_CACHE, "r", encoding="utf-8") as f:
         raw = json.load(f)
 
-    # SQuAD format: data → list of {title, paragraphs → [{context, qas}]}
+    # SQuAD format: data list of {title, paragraphs -> [{context, qas}]}
     examples = []
     for doc in raw.get("data", []):
         for para in doc.get("paragraphs", []):
@@ -80,13 +80,13 @@ def load_cuad() -> list:
                     "answers":  {"text": answer_texts},
                 })
 
-    print(f"   ✓ Loaded {len(examples):,} QA examples from {len(raw.get('data', []))} contracts")
+    print(f"   Loaded {len(examples):,} QA examples from {len(raw.get('data', []))} contracts")
     return examples
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 # 2. BUILD TEXT + LABEL PAIRS FROM CUAD'S QA FORMAT
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 
 def build_dataset(cuad_split):
     """
@@ -96,8 +96,8 @@ def build_dataset(cuad_split):
       - answers  : list of answer spans (empty if clause absent)
 
     Strategy:
-      - If answers exist → the answer SPAN is the clause text (positive sample)
-      - If no answer     → the context paragraph is "safe" (no risky clause found)
+      - If answers exist -> the answer SPAN is the clause text (positive sample)
+      - If no answer     -> the context paragraph is 'safe' (no risky clause found)
 
     We extract the clause category from the question title using a keyword match,
     then look up its risk level from CUAD_RISK_MAP.
@@ -158,7 +158,7 @@ def _extract_category(question: str) -> str:
             for key in CUAD_RISK_MAP:
                 if key.lower() == raw.lower():
                     return key
-            # Partial/fuzzy match — the question substring might be a fragment
+            # Partial/fuzzy match - the question substring might be a fragment
             for key in CUAD_RISK_MAP:
                 if key.lower() in raw.lower() or raw.lower() in key.lower():
                     return key
@@ -166,9 +166,9 @@ def _extract_category(question: str) -> str:
     return "Unknown"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 # 3. BALANCE CLASSES
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 
 def balance_classes(texts: list[str], labels: list[str], max_per_class: int = 5000):
     """
@@ -195,13 +195,13 @@ def balance_classes(texts: list[str], labels: list[str], max_per_class: int = 50
     return [t for t, _ in combined], [l for _, l in combined]
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 # 4. TRAIN
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 
 def train(texts: list[str], labels: list[str]):
     """
-    Train a TF-IDF (1–3 gram) + Logistic Regression pipeline.
+    Train a TF-IDF (1-3 gram) + Logistic Regression pipeline.
     Returns the fitted pipeline and label encoder.
     """
     from sklearn.pipeline import Pipeline
@@ -211,7 +211,7 @@ def train(texts: list[str], labels: list[str]):
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import classification_report
 
-    print("\n🔧 Training TF-IDF + Logistic Regression pipeline…")
+    print("\nTraining TF-IDF + Logistic Regression pipeline...")
 
     le = LabelEncoder()
     y  = le.fit_transform(labels)
@@ -244,7 +244,7 @@ def train(texts: list[str], labels: list[str]):
 
     # Evaluation
     y_pred = clf.predict(X_test)
-    print("\n📊 Classification Report (test set):")
+    print("\nClassification Report (test set):")
     print(classification_report(y_test, y_pred, target_names=le.classes_))
 
     acc = (y_pred == y_test).mean()
@@ -253,31 +253,31 @@ def train(texts: list[str], labels: list[str]):
     return clf, le
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 # 5. SAVE
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 
 def save_model(clf, le):
     joblib.dump(clf, MODEL_PATH)
     joblib.dump(le,  ENCODER_PATH)
-    print(f"\n✅ Model saved   → {MODEL_PATH}")
-    print(f"✅ Encoder saved → {ENCODER_PATH}")
+    print(f"\nModel saved   -> {MODEL_PATH}")
+    print(f"Encoder saved -> {ENCODER_PATH}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 # MAIN
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 
 def main():
     print("=" * 65)
-    print(" LegalEase — CUAD Classifier Training Script")
+    print(" LegalEase - CUAD Classifier Training Script")
     print("=" * 65)
 
     # 1. Load  (returns a flat list of QA dicts)
     ds = load_cuad()
 
-    # 2. Build dataset — ds is a list, pass it directly
-    print("\n📝 Building training corpus from CUAD examples…")
+    # 2. Build dataset - ds is a list, pass it directly
+    print("\nBuilding training corpus from CUAD examples...")
     all_texts, all_labels = build_dataset(ds)
 
     # Class distribution before balancing
@@ -298,7 +298,7 @@ def main():
     # 5. Save
     save_model(clf, le)
 
-    print("\n▶ To use the model, restart the FastAPI server.")
+    print("\nTo use the model, restart the FastAPI server.")
     print("  The updated risk_classifier.py will auto-load it on startup.\n")
 
 

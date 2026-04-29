@@ -6,6 +6,8 @@ const ScannerModal = ({ isOpen, onClose, onScanComplete }) => {
   const [status, setStatus] = useState('generating');
   const [qrUrl, setQrUrl] = useState('');
 
+  const [imageCount, setImageCount] = useState(0);
+
   // 1. Generate session ID on mount
   useEffect(() => {
     if (isOpen) {
@@ -13,15 +15,18 @@ const ScannerModal = ({ isOpen, onClose, onScanComplete }) => {
         try {
           const response = await fetch('/api/scan/session', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'ngrok-skip-browser-warning': 'true'
+            },
           });
           const data = await response.json();
           setSessionId(data.sessionId);
 
-          // Use the current page's origin (protocol + host).
-          // When running through ngrok, this automatically becomes the ngrok public URL
-          // e.g. https://abc123.ngrok-free.app — works from any network, no firewall issues.
-          const url = `${window.location.origin}/mobile-scan/${data.sessionId}`;
+          const url = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? `http://${data.localIP}:${data.frontendPort || 5188}/mobile-scan/${data.sessionId}`
+            : `${window.location.origin}/mobile-scan/${data.sessionId}`;
+          
           setQrUrl(url);
           setStatus('pending');
         } catch (error) {
@@ -43,16 +48,25 @@ const ScannerModal = ({ isOpen, onClose, onScanComplete }) => {
           const res = await fetch(`/api/scan/status/${sessionId}`);
           if (res.ok) {
             const data = await res.json();
-            if (data.status === 'completed' && data.imageUrl) {
+            
+            // Update live count
+            if (data.count !== undefined) {
+              setImageCount(data.count);
+            }
+
+            if (data.status === 'completed' && data.imageUrls) {
               setStatus('completed');
-              onScanComplete(data.imageUrl);
-              onClose();
+              // Pass the array of images to the parent
+              onScanComplete(data.imageUrls);
+              setTimeout(() => {
+                onClose();
+              }, 1500);
             }
           }
         } catch (error) {
           console.error("Error polling scan status:", error);
         }
-      }, 2000); // Poll every 2 seconds
+      }, 2000);
     }
 
     return () => {
@@ -97,13 +111,18 @@ const ScannerModal = ({ isOpen, onClose, onScanComplete }) => {
                  {qrUrl && <QRCode value={qrUrl} size={200} />}
               </div>
               
-              <div className="flex items-center space-x-2 text-blue-600">
+              <div className="flex items-center space-x-2 text-blue-600 mb-2">
                 <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <span className="text-sm font-medium">Waiting for upload...</span>
+                <span className="text-sm font-medium">
+                  {imageCount > 0 ? `${imageCount} page(s) received...` : 'Waiting for upload...'}
+                </span>
               </div>
+              {imageCount > 0 && (
+                <p className="text-xs text-gray-400 italic">Click "Finish" on your phone when done.</p>
+              )}
             </>
           )}
 

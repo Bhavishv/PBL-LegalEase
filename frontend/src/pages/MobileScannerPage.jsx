@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 const MobileScannerPage = () => {
   const { sessionId } = useParams();
   const [status, setStatus] = useState('idle'); // idle, camera, uploading, success, error
+  const [imageCount, setImageCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -17,11 +18,14 @@ const MobileScannerPage = () => {
         audio: false
       });
       streamRef.current = stream;
-      // Trigger re-render first, then useEffect attaches stream after <video> is in DOM
       setStatus('camera');
     } catch (err) {
       console.error("Camera access error:", err);
-      setErrorMsg('Camera access denied or not available. Please use "Select from Gallery" instead.');
+      let msg = 'Camera access denied or not available.';
+      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+        msg += ' 🔐 Browser security blocks camera on non-secure (HTTP) connections. Use ngrok or HTTPS.';
+      }
+      setErrorMsg(msg);
       setStatus('error');
     }
   }, []);
@@ -48,9 +52,8 @@ const MobileScannerPage = () => {
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
-    // Guard: video must have actual dimensions (stream must be active & loaded)
     if (!video.videoWidth || video.videoWidth === 0) {
-      setErrorMsg('Camera is not ready yet. Please wait a moment and try again.');
+      setErrorMsg('Camera is not ready yet.');
       setStatus('error');
       return;
     }
@@ -80,30 +83,24 @@ const MobileScannerPage = () => {
   };
 
   // Upload image to backend
-  // Uses a relative path (/api/scan/upload) which routes through the Vite proxy.
-  // When accessed via ngrok, the request goes: Phone → ngrok → Vite (port 5173) → Backend (port 5000)
-  // This avoids all direct-IP and firewall issues.
   const uploadImage = async (fileOrBlob, filename) => {
     setStatus('uploading');
 
     const formData = new FormData();
-    // IMPORTANT: sessionId must come BEFORE the image file.
-    // Multer processes fields in stream order — if image comes first,
-    // req.body.sessionId is still undefined when the filename function runs → 500 error.
     formData.append('sessionId', sessionId);
     formData.append('image', fileOrBlob, filename);
 
     try {
       const response = await fetch('/api/scan/upload', {
         method: 'POST',
-        headers: {
-          'ngrok-skip-browser-warning': 'true', // Bypass ngrok's interstitial for API calls
-        },
+        headers: { 'ngrok-skip-browser-warning': 'true' },
         body: formData,
       });
 
       if (response.ok) {
-        setStatus('success');
+        const data = await response.json();
+        setImageCount(data.count);
+        setStatus('idle'); // Back to idle to allow more scans
       } else {
         const data = await response.json();
         setErrorMsg(data.message || 'Upload failed');
@@ -111,7 +108,27 @@ const MobileScannerPage = () => {
       }
     } catch (err) {
       console.error("Upload Error:", err);
-      setErrorMsg(`Upload failed: ${err.message || err.toString()}`);
+      setErrorMsg(`Upload failed: ${err.message}`);
+      setStatus('error');
+    }
+  };
+
+  // Mark session as finished
+  const finishSession = async () => {
+    setStatus('uploading');
+    try {
+      const response = await fetch(`/api/scan/finish/${sessionId}`, {
+        method: 'POST',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+      });
+      if (response.ok) {
+        setStatus('success');
+      } else {
+        setErrorMsg('Failed to finish session');
+        setStatus('error');
+      }
+    } catch (err) {
+      setErrorMsg('Error finishing session');
       setStatus('error');
     }
   };
@@ -153,94 +170,74 @@ const MobileScannerPage = () => {
       {/* Hidden canvas for capturing photo */}
       <canvas ref={canvasRef} className="hidden" />
 
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl overflow-hidden p-8 text-center border border-slate-100">
-        <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+      <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl overflow-hidden p-8 text-center border border-slate-100">
+        <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner relative">
           <svg className="w-10 h-10 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
+          {imageCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-8 h-8 bg-indigo-600 text-white text-xs font-black rounded-full flex items-center justify-center border-4 border-white shadow-lg">
+              {imageCount}
+            </span>
+          )}
         </div>
 
-        <h1 className="text-2xl font-bold text-slate-900 mb-2">Document Scanner</h1>
+        <h1 className="text-2xl font-black text-slate-900 mb-2">Multi-Page Scanner</h1>
         
         {status === 'idle' && (
           <div className="space-y-4 mt-6">
-            <p className="text-slate-600 leading-relaxed text-sm mb-4">
-              Scan your document using your phone camera or select an existing photo.
+            <p className="text-slate-500 font-bold text-sm mb-4">
+              {imageCount === 0 
+                ? "Scan the first page of your document." 
+                : `Successfully scanned ${imageCount} page(s). Take more photos or finish.`}
             </p>
             
-            {/* Primary: Open Camera */}
-            <button 
-              onClick={startCamera}
-              className="w-full bg-indigo-600 active:bg-indigo-700 text-white font-bold py-5 px-6 rounded-2xl shadow-lg flex items-center justify-center gap-3 text-lg active:scale-95 transition-transform"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              </svg>
-              Take Photo
+            <button onClick={startCamera} className="w-full bg-indigo-600 active:bg-indigo-700 text-white font-black py-5 px-6 rounded-2xl shadow-glow flex items-center justify-center gap-3 text-lg active:scale-95 transition-transform">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              {imageCount === 0 ? "Scan First Page" : "Add Another Page"}
             </button>
 
-            {/* Secondary: Gallery */}
-            <div className="relative group">
-              <input 
-                type="file" 
-                id="gallery-input"
-                accept="image/*" 
-                onChange={handleGallerySelect}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-              />
-              <div className="w-full bg-white text-slate-700 border-2 border-slate-200 font-bold py-4 px-6 rounded-2xl shadow-sm flex items-center justify-center gap-3 text-base active:scale-95 transition-transform leading-none">
-                <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                Select from Gallery
-              </div>
-            </div>
+            {imageCount > 0 && (
+              <button onClick={finishSession} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 px-6 rounded-2xl shadow-lg flex items-center justify-center gap-3 text-base transition-all">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                Finish & Sync to PC
+              </button>
+            )}
 
-            <div className="pt-4 border-t border-slate-100">
-              <p className="text-xs text-slate-400">
-                Session: <span className="font-mono">{sessionId?.substring(0, 8)}...</span>
-              </p>
+            <div className="relative group">
+              <input type="file" id="gallery-input" accept="image/*" onChange={handleGallerySelect} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" />
+              <div className="w-full bg-slate-50 text-slate-600 border-2 border-slate-100 font-bold py-4 px-6 rounded-2xl flex items-center justify-center gap-3 text-sm active:scale-95 transition-transform">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                Upload from Files
+              </div>
             </div>
           </div>
         )}
 
         {status === 'uploading' && (
-          <div className="py-8 flex flex-col items-center">
+          <div className="py-12 flex flex-col items-center">
             <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mb-6"></div>
-            <p className="text-lg font-medium text-slate-700">Uploading to your PC...</p>
+            <p className="text-lg font-black text-slate-700">Syncing with PC...</p>
           </div>
         )}
 
         {status === 'success' && (
-          <div className="py-6">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-              <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-              </svg>
+          <div className="py-8">
+            <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+              <svg className="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
             </div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Scan Sent!</h2>
-            <p className="text-slate-600 text-lg">
-              You can now safely close this page and check your PC.
-            </p>
+            <h2 className="text-2xl font-black text-slate-900 mb-2">All Pages Sent!</h2>
+            <p className="text-slate-500 font-bold">Your document is ready on your PC.</p>
           </div>
         )}
 
         {status === 'error' && (
           <div className="py-6">
-            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-slate-900 mb-2">Something Went Wrong</h2>
-            <p className="text-red-500 mb-6 text-sm">{errorMsg}</p>
-            <button 
-              onClick={() => { setErrorMsg(''); setStatus('idle'); }}
-              className="w-full bg-slate-100 text-slate-700 font-bold py-3 px-6 rounded-xl active:bg-slate-200"
-            >
-              Try Again
-            </button>
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6"><svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></div>
+            <h2 className="text-xl font-black text-slate-900 mb-2">Sync Error</h2>
+            <p className="text-red-500 mb-6 text-sm font-bold">{errorMsg}</p>
+            <button onClick={() => { setErrorMsg(''); setStatus('idle'); }} className="w-full bg-slate-100 text-slate-700 font-bold py-3 px-6 rounded-xl">Try Again</button>
           </div>
         )}
       </div>
