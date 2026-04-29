@@ -1,47 +1,34 @@
-"""
-translator.py — Google Cloud Translation integration for LegalEase.
-"""
+import ai_service
+from typing import Optional
 
-import os
-import requests
-from dotenv import load_dotenv
-
-load_dotenv()
-
-GOOGLE_API_KEY = os.getenv("GOOGLE_TRANSLATE_API_KEY")
-
-def translate_text(text: str, target_lang: str) -> str:
+def translate_text(text: str, target_lang: str) -> Optional[str]:
     """
-    Translates text to the target language using Google Cloud Translation API (Basic).
-    
-    Args:
-        text: The string to translate.
-        target_lang: ISO 639-1 language code (e.g. 'hi', 'mr').
+    Translates text using AI (Gemini/Mistral).
+    """
+    if not text:
+        return None
         
-    Returns:
-        Translated text string.
-    """
-    if not GOOGLE_API_KEY or "YOUR_GOOGLE_CLOUD_API_KEY" in GOOGLE_API_KEY:
-        print(f"[Translator] ⚠️ Missing API Key. Returning mock translation for '{target_lang}'.")
-        # Mocking for demo if no key is provided
-        mocks = {
-            "hi": f"[Mock Hindi] {text}",
-            "mr": f"[Mock Marathi] {text}"
-        }
-        return mocks.get(target_lang, f"[Mock {target_lang}] {text}")
-
-    url = "https://translation.googleapis.com/language/translate/v2"
-    params = {
-        "q": text,
-        "target": target_lang,
-        "key": GOOGLE_API_KEY
+    lang_names = {
+        'hi': 'Hindi',
+        'mr': 'Marathi',
+        'kn': 'Kannada',
+        'en': 'English'
     }
-
+    
+    target_name = lang_names.get(target_lang, target_lang)
+    
+    prompt = (
+        f"Translate the following legal explanation into {target_name}. "
+        "Keep the tone professional and the language simple for a common person to understand. "
+        "Only return the translated text.\n\n"
+        f"Text: {text}"
+    )
+    
     try:
-        response = requests.post(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        return data["data"]["translations"][0]["translatedText"]
+        translated = ai_service.ask_ai(prompt)
+        if translated:
+            return translated.strip()
     except Exception as e:
-        print(f"[Translator] ❌ Error during translation: {e}")
-        return text  # Fallback to original text on error
+        print(f"[Translator] AI Translation failed: {e}")
+        
+    return None

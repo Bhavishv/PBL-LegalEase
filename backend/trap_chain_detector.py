@@ -1,22 +1,14 @@
 """
 trap_chain_detector.py — Detects combinations of risky clauses that form "traps".
-
-A 'trap chain' occurs when multiple clauses individually appear manageable
-but together create a hidden, compounded risk (e.g., auto-renewal + high
-cancellation fee + no termination-for-convenience clause).
+Synchronized with AnalysisResponse API model.
 """
 
 from __future__ import annotations
 import re
+import uuid
 from typing import List, Dict, Any
 
 from knowledge_base import TRAP_CHAINS
-
-
-def _clause_text_matches_keywords(clause_text: str, keywords: List[str]) -> bool:
-    """Return True if any keyword is found in the clause text."""
-    lower = clause_text.lower()
-    return any(re.search(kw.lower(), lower) for kw in keywords)
 
 
 def detect_trap_chains(clauses: List[str]) -> List[Dict[str, Any]]:
@@ -27,26 +19,32 @@ def detect_trap_chains(clauses: List[str]) -> List[Dict[str, Any]]:
         clauses: List of raw clause strings from the contract.
 
     Returns:
-        List of detected trap chain dicts with name and description.
+        List of detected trap chain dicts matching TrapChainResult model.
     """
     detected = []
 
     for chain in TRAP_CHAINS:
         keywords = chain["keywords"]
-        # Count how many keywords from this chain appear across all clauses
-        matched_keywords = []
-        for kw in keywords:
-            for clause in clauses:
-                if re.search(kw.lower(), clause.lower()):
-                    matched_keywords.append(kw)
-                    break  # Only count each keyword once
+        matched_indices = []
+        
+        # Identify which clauses contain the keywords for this trap
+        for i, clause in enumerate(clauses):
+            lower_clause = clause.lower()
+            for kw in keywords:
+                if re.search(kw.lower(), lower_clause):
+                    if i not in matched_indices:
+                        matched_indices.append(i)
+                    break 
 
-        # Trigger the trap if ≥2 of the keywords are found across the contract
-        if len(matched_keywords) >= 2:
+        # Trigger the trap if ≥2 different keywords/clauses are involved
+        if len(matched_indices) >= 2:
+            # We map the KB fields to the API model fields
             detected.append({
-                "name": chain["name"],
-                "description": chain["description"],
-                "matched_keywords": matched_keywords,
+                "id": f"trap_{uuid.uuid4().hex[:6]}",
+                "type": chain["name"],
+                "involved_indices": matched_indices,
+                "reason": chain["description"],
+                "remedy": chain.get("remedy", "Negotiate these clauses together to ensure they don't form a compounded risk.")
             })
 
     return detected

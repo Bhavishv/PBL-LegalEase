@@ -1,5 +1,5 @@
 """
-train_model.py — Train a TF-IDF + Logistic Regression clause-risk classifier
+train_model.py — Train a TF-IDF + LinearSVC clause-risk classifier
                  on the CUAD (Contract Understanding Atticus Dataset).
 
 Run once (takes ~2–5 minutes on first run to download dataset):
@@ -170,9 +170,11 @@ def _extract_category(question: str) -> str:
 # 3. BALANCE CLASSES
 # ==============================================================================
 
-def balance_classes(texts: list[str], labels: list[str], max_per_class: int = 5000):
+def balance_classes(texts: list[str], labels: list[str], target_per_class: int = 5000):
     """
-    Cap each class at max_per_class samples to avoid the safe-class dominating.
+    Ensures each class has a similar number of samples.
+    - Caps majority classes at target_per_class.
+    - OVERSAMPLES minority classes (like high-risk) to reach target_per_class.
     """
     from collections import defaultdict
     import random
@@ -184,8 +186,17 @@ def balance_classes(texts: list[str], labels: list[str], max_per_class: int = 50
 
     balanced_texts, balanced_labels = [], []
     for label, bucket in buckets.items():
-        random.shuffle(bucket)
-        sample = bucket[:max_per_class]
+        if not bucket: continue
+        
+        # If we have too many, downsample
+        if len(bucket) > target_per_class:
+            sample = random.sample(bucket, target_per_class)
+        # If we have too few, oversample (duplicate)
+        else:
+            sample = bucket * (target_per_class // len(bucket))
+            remaining = target_per_class % len(bucket)
+            sample.extend(random.sample(bucket, remaining))
+            
         balanced_texts.extend(sample)
         balanced_labels.extend([label] * len(sample))
 
@@ -201,17 +212,17 @@ def balance_classes(texts: list[str], labels: list[str], max_per_class: int = 50
 
 def train(texts: list[str], labels: list[str]):
     """
-    Train a TF-IDF (1-3 gram) + Logistic Regression pipeline.
+    Train a TF-IDF (1-4 gram) + LinearSVC pipeline.
     Returns the fitted pipeline and label encoder.
     """
     from sklearn.pipeline import Pipeline
     from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.linear_model import LogisticRegression
+    from sklearn.svm import LinearSVC
     from sklearn.preprocessing import LabelEncoder
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import classification_report
 
-    print("\nTraining TF-IDF + Logistic Regression pipeline...")
+    print("\nTraining TF-IDF + LinearSVC pipeline...")
 
     le = LabelEncoder()
     y  = le.fit_transform(labels)
@@ -224,19 +235,17 @@ def train(texts: list[str], labels: list[str]):
 
     clf = Pipeline([
         ("tfidf", TfidfVectorizer(
-            ngram_range=(1, 3),
-            max_features=60_000,
+            ngram_range=(1, 4),
+            max_features=80_000,
             sublinear_tf=True,
             stop_words="english",
             min_df=2,
         )),
-        ("lr", LogisticRegression(
-            max_iter=1000,
-            C=5.0,
-            solver="lbfgs",
-            multi_class="multinomial",
+        ("svc", LinearSVC(
+            C=2.0,
             class_weight="balanced",
-            n_jobs=-1,
+            max_iter=3000,
+            dual=False
         )),
     ])
 
@@ -289,7 +298,7 @@ def main():
         sys.exit(1)
 
     # 3. Balance
-    texts, labels = balance_classes(all_texts, all_labels, max_per_class=5000)
+    texts, labels = balance_classes(all_texts, all_labels, target_per_class=3000)
     print(f"   Balanced distribution : {dict(Counter(labels))}")
 
     # 4. Train

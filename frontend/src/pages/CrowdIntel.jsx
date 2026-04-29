@@ -87,16 +87,16 @@ function ClauseCard({ clause, idx }) {
                 </svg>
               </div>
               <div>
-                <p className="text-[10px] uppercase font-bold text-blue-600 tracking-widest mb-1">Gemini AI Insight</p>
+                <p className="text-[10px] uppercase font-bold text-blue-600 tracking-widest mb-1">LegalEase AI Insight</p>
                 <p className="text-sm font-medium text-slate-700 leading-relaxed">{clause.aiInsight}</p>
               </div>
             </div>
           )}
         </div>
 
-        <div className="mt-5 flex gap-3 pt-4 border-t border-slate-200/60">
-           <button className="flex-1 px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black uppercase text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-all">Flag for Review</button>
-           <button className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase shadow-lg hover:bg-indigo-700 transition-all">Add to Playbook</button>
+        <div className="mt-5 flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-200/60">
+           <button className="flex-1 px-4 py-3 sm:py-2 bg-white border border-slate-200 rounded-xl text-xs font-black uppercase text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-all">Flag for Review</button>
+           <button className="flex-1 px-4 py-3 sm:py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase shadow-lg hover:bg-indigo-700 transition-all">Add to Playbook</button>
         </div>
       </div>
     </div>
@@ -108,6 +108,12 @@ function CrowdIntel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("All");
+  const [contributed, setContributed] = useState(false);
+
+  const handleContribute = () => {
+    setContributed(true);
+    setTimeout(() => setContributed(false), 3000);
+  };
 
   useEffect(() => {
     const fetch = async () => {
@@ -189,16 +195,21 @@ function CrowdIntel() {
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 blur-3xl rounded-full"></div>
             <h3 className="text-xs font-black uppercase tracking-widest text-blue-400 mb-4">Unique Edge</h3>
             <p className="text-xl font-black mb-4 leading-tight">Leverage collective rejection data to win your next negotiation.</p>
-            <p className="text-sm font-medium text-slate-400 mb-8">Our AI identifies which specific wordings have a <span className="text-white font-bold">90%+ rejection rate</span> across 14,000+ contributors.</p>
-            <button className="w-full py-3 bg-blue-600 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all">Contribute Data</button>
+            <p className="text-sm font-medium text-slate-400 mb-8">Our AI identifies which specific wordings have a <span className="text-white font-bold">90%+ rejection rate</span> across 14,000+ contributors. Powered by LegalEase AI.</p>
+            <button 
+              onClick={handleContribute}
+              className={`w-full py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${contributed ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+            >
+              {contributed ? "✓ Data Sync Complete" : "Contribute Data"}
+            </button>
          </div>
       </div>
 
       {/* ── Clause Feed ── */}
       <div className="space-y-6">
-         <div className="flex items-center justify-between mb-8">
+         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
             <h2 className="text-2xl font-black text-slate-900">Trending Risk Clauses</h2>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
                {["All", "SaaS", "Enterprise", "Finance"].map(f => (
                   <button key={f} onClick={() => setFilter(f)} className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${filter === f ? "bg-slate-900 text-white shadow-lg" : "bg-white text-slate-400 border border-slate-100"}`}>
                      {f}

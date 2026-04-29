@@ -166,4 +166,43 @@ h1, h2, h3, h4, h5, h6 {
   background-size: 40px 40px;
   background-image: linear-gradient(to right, rgba(0,0,0,0.02) 1px, transparent 1px),
                     linear-gradient(to bottom, rgba(0,0,0,0.02) 1px, transparent 1px);
-}
+}
+
+/* Looping Gradient Background */
+@keyframes gradient-xy {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.animate-gradient-xy {
+  background-size: 400% 400%;
+  animation: gradient-xy 15s ease infinite;
+}
+
+/* Animated Highlighter */
+@keyframes highlight-draw {
+  from { width: 0; }
+  to { width: 100%; }
+}
+.highlight-animated {
+  position: relative;
+  display: inline;
+  z-index: 1;
+}
+.highlight-animated::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  height: 8px;
+  width: 0; /* starts at 0 */
+  background-color: rgba(239, 68, 68, 0.3); /* subtle red marker */
+  border-radius: 4px;
+  z-index: -1;
+  animation: highlight-draw 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.5s;
+}
+.highlight-warning::after {
+  background-color: rgba(245, 158, 11, 0.3); /* subtle amber marker */
+}
+

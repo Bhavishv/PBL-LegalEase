@@ -59,8 +59,9 @@ def _load() -> bool:
         from sentence_transformers import SentenceTransformer
         import numpy as np
 
-        print("[LegalEase] ⏳ Loading Sentence-BERT (all-MiniLM-L6-v2)…")
-        _model = SentenceTransformer("all-MiniLM-L6-v2")
+        print("[LegalEase] ⏳ Loading Legal-BERT (nlpaueb/legal-bert-base-uncased)…")
+        # We use the SentenceTransformer wrapper for its optimized pooling and similarity functions
+        _model = SentenceTransformer("nlpaueb/legal-bert-base-uncased")
 
         _kb_texts  = [entry["text"] for entry in KNOWLEDGE_BASE]
         _kb_risks  = [entry["risk"] for entry in KNOWLEDGE_BASE]

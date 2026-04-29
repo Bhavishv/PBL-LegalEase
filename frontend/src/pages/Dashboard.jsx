@@ -15,12 +15,51 @@ import {
   Loader2
 } from "lucide-react";
 import UploadContract from "../components/UploadContract";
+import { Joyride, STATUS } from 'react-joyride';
 
 function Dashboard() {
   const navigate = useNavigate();
   const [statsData, setStatsData] = useState({ totalScans: 0, totalRisks: 0, termsLearned: 0, trustScore: "0%" });
   const [recentScans, setRecentScans] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // Tour Guide State
+  const [runTour, setRunTour] = useState(false);
+  const [tourSteps] = useState([
+    {
+      target: '.tour-step-1',
+      content: 'Welcome to LegalEase! This is your Dashboard where you can monitor all your legal activities.',
+      disableBeacon: true,
+    },
+    {
+      target: '.tour-step-2',
+      content: 'Start by uploading a contract here. You can drag and drop PDFs, docs, or images. The AI will analyze it instantly.',
+    },
+    {
+      target: '.tour-step-3',
+      content: 'Here you can see your recent analysis history and quickly access past reports.',
+    },
+    {
+      target: '.tour-step-4',
+      content: 'Access powerful features like Legal AI chat, Glossary, and Community Crowd Intel from this menu.',
+    }
+  ]);
+
+  useEffect(() => {
+    // Only run tour if they haven't seen it
+    const hasSeenTour = localStorage.getItem('legalease_tour_completed');
+    if (!hasSeenTour) {
+      setTimeout(() => setRunTour(true), 1000);
+    }
+  }, []);
+
+  const handleTourCallback = (data) => {
+    const { status } = data;
+    if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
+      setRunTour(false);
+      localStorage.setItem('legalease_tour_completed', 'true');
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -49,19 +88,38 @@ function Dashboard() {
   ];
 
   return (
-    <div className="flex-1 bg-grid min-h-screen">
+    <div className="flex-1 bg-grid min-h-screen bg-gradient-to-br from-indigo-50/50 via-white to-blue-50/50 animate-gradient-xy">
+      <Joyride
+        steps={tourSteps}
+        run={runTour}
+        continuous={true}
+        showProgress={true}
+        showSkipButton={true}
+        callback={handleTourCallback}
+        styles={{
+          options: {
+            primaryColor: '#2563eb',
+            textColor: '#0f172a',
+            backgroundColor: '#ffffff',
+            arrowColor: '#ffffff',
+          },
+          tooltipContainer: { textAlign: 'left' },
+          buttonNext: { borderRadius: '8px', fontWeight: 'bold' },
+          buttonBack: { color: '#64748b' }
+        }}
+      />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 relative">
         
         {/* Background Decorative Blob */}
         <div className="absolute top-0 right-0 w-96 h-96 bg-blue-100/40 blur-[120px] rounded-full -mr-48 -mt-24 pointer-events-none"></div>
 
         {/* Header - Welcome & Search row */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12 animate-fade-in">
+        <div className="tour-step-1 flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12 animate-fade-in">
           <div className="space-y-1">
             <h1 className="text-4xl font-black text-slate-900 tracking-tight">
-              Contract <span className="text-blue-600">Commander</span>
+              LegalEase <span className="text-blue-600">AI</span>
             </h1>
-            <p className="text-slate-500 font-medium">Protect your interests with AI-powered legal analysis.</p>
+            <p className="text-slate-500 font-medium">We translate complex contracts into simple language for everyone.</p>
           </div>
           
           <div className="relative w-full md:w-96 group">
@@ -93,7 +151,7 @@ function Dashboard() {
           
           {/* Main Content Area - Upload */}
           <div className="lg:col-span-8 space-y-8 animate-slide-up [animation-delay:0.1s]">
-            <div className="glass-card rounded-[2.5rem] p-8 md:p-12 border-slate-200/60 overflow-hidden relative group">
+            <div className="tour-step-2 glass-card rounded-[2.5rem] p-8 md:p-12 border-slate-200/60 overflow-hidden relative group">
               <div className="absolute top-0 right-0 p-8 scale-150 opacity-10 group-hover:scale-[1.7] transition-transform duration-700 pointer-events-none">
                 <Sparkles className="w-20 h-20 text-blue-600" />
               </div>
@@ -118,7 +176,7 @@ function Dashboard() {
             </div>
             
             {/* Recent Activity Mini-Section */}
-            <div className="glass-card rounded-[2rem] p-8 border-slate-100">
+            <div className="tour-step-3 glass-card rounded-[2rem] p-8 border-slate-100">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold flex items-center gap-2">
                   <History className="w-5 h-5 text-blue-600" /> Recent Activity
@@ -158,7 +216,7 @@ function Dashboard() {
           </div>
 
           {/* Right Sidebar - Feature Quick Access */}
-          <div className="lg:col-span-4 space-y-6 animate-slide-up [animation-delay:0.2s]">
+          <div className="tour-step-4 lg:col-span-4 space-y-6 animate-slide-up [animation-delay:0.2s]">
             
             <Link to="/legal-ai" className="block glass-card rounded-[2rem] p-6 border-slate-200 group hover:bg-blue-600 transition-all duration-300">
               <div className="flex gap-4 items-center">
@@ -205,7 +263,10 @@ function Dashboard() {
                   <p className="text-blue-100 text-sm font-medium leading-relaxed">
                     Get unlimited scans, priority AI analysis, and multi-language support.
                   </p>
-                  <button className="w-full py-3 bg-white text-blue-700 font-black rounded-xl hover:bg-blue-50 transition-all shadow-lg hover:translate-y-[-2px]">
+                  <button 
+                    onClick={() => navigate("/premium")}
+                    className="w-full py-4 bg-white text-blue-600 font-black rounded-2xl shadow-lg hover:bg-blue-50 transition-all text-xs uppercase tracking-widest"
+                  >
                     Go Premium
                   </button>
                </div>

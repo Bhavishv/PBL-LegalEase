@@ -11,10 +11,19 @@ function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState(null);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   useEffect(() => {
-    const user = localStorage.getItem("user");
-    setIsLoggedIn(!!user);
+    const savedUser = localStorage.getItem("user");
+    if (savedUser) {
+      const parsedUser = JSON.parse(savedUser);
+      setIsLoggedIn(true);
+      setUser(parsedUser);
+    } else {
+      setIsLoggedIn(false);
+      setUser(null);
+    }
   }, [location]);
 
   const isAuthPage = AUTH_PAGES.includes(location.pathname);
@@ -79,13 +88,46 @@ function Navbar() {
 
                 <div className="h-6 w-[1px] bg-slate-200 mx-2 hidden sm:block"></div>
 
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="btn-haptic text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 px-4 py-2.5 rounded-xl transition-all shadow-lg shadow-slate-900/10"
-                >
-                  Log Out
-                </button>
+                <div className="relative">
+                  <div 
+                    onClick={() => setShowProfileMenu(!showProfileMenu)}
+                    className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-2xl pl-2 pr-4 py-1.5 hover:bg-slate-100 transition-all cursor-pointer group"
+                  >
+                     {user?.picture ? (
+                       <img src={user.picture} alt="Profile" className="w-8 h-8 rounded-full border-2 border-white shadow-sm" />
+                     ) : (
+                       <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-black uppercase">
+                         {user?.name?.charAt(0) || "U"}
+                       </div>
+                     )}
+                     <div className="hidden lg:block text-left">
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest leading-none mb-1">Authenticated</p>
+                        <p className="text-sm font-bold text-slate-800 leading-none truncate max-w-[100px]">{user?.name || "User"}</p>
+                     </div>
+                     <svg className={`w-4 h-4 text-slate-400 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  </div>
+
+                  {showProfileMenu && (
+                    <div className="absolute right-0 mt-3 w-64 bg-white rounded-3xl shadow-2xl border border-slate-100 p-4 animate-scale-in z-[60]">
+                       <div className="flex items-center gap-3 p-2 mb-4 border-b border-slate-50 pb-4">
+                          {user?.picture ? (
+                            <img src={user.picture} alt="Profile" className="w-12 h-12 rounded-full border-2 border-blue-100" />
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-xl">{user?.name?.charAt(0)}</div>
+                          )}
+                          <div>
+                             <p className="text-sm font-black text-slate-900 leading-tight">{user?.name}</p>
+                             <p className="text-xs font-medium text-slate-500 truncate max-w-[140px]">{user?.email}</p>
+                          </div>
+                       </div>
+                       
+                       <button onClick={handleSignOut} className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all font-bold text-sm">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" /></svg>
+                          Sign Out
+                       </button>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               /* ── Public / Landing Nav ── */

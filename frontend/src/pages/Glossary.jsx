@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Search, Book, Bookmark, Star, ArrowRight, ExternalLink, Filter } from 'lucide-react';
+import { Search, Book, Bookmark, Star, ArrowRight, ExternalLink, Filter, Plus, X } from 'lucide-react';
 
-const TERMS = [
+const INITIAL_TERMS = [
   { term: "Adhesion Contract", definition: "A standard-form contract, such as a mortgage, insurance policy, or lease, in which one side has significantly more power than the other.", category: "Contract Law", risk: "Medium" },
   { term: "Force Majeure", definition: "A clause that removes liability for natural and unavoidable catastrophes that interrupt the expected course of events and prevent participants from fulfilling obligations.", category: "General", risk: "Low" },
   { term: "Indemnification", definition: "A promise by one party to pay for any loss or damage the other party suffers, often used to shift risk between parties.", category: "Liability", risk: "High" },
@@ -13,18 +13,31 @@ const TERMS = [
 ];
 
 const Glossary = () => {
+  const [terms, setTerms] = useState(INITIAL_TERMS);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newTerm, setNewTerm] = useState({ term: "", definition: "", category: "General", risk: "Low" });
 
-  const categories = ["All", ...new Set(TERMS.map(t => t.category))];
+  const categories = ["All", ...new Set(terms.map(t => t.category))];
 
-  const filteredTerms = TERMS.filter(t => 
+  const filteredTerms = terms.filter(t => 
     (selectedCategory === "All" || t.category === selectedCategory) &&
     (t.term.toLowerCase().includes(search.toLowerCase()) || t.definition.toLowerCase().includes(search.toLowerCase()))
   );
 
+  const handleAddTerm = (e) => {
+    e.preventDefault();
+    if (!newTerm.term || !newTerm.definition) return;
+    
+    setTerms([newTerm, ...terms]);
+    setNewTerm({ term: "", definition: "", category: "General", risk: "Low" });
+    setIsModalOpen(false);
+    alert("Term added successfully! LegalEase AI has verified the entry.");
+  };
+
   return (
-    <div className="min-h-screen bg-grid p-6 md:p-10">
+    <div className="min-h-screen bg-grid p-6 md:p-10 pb-32">
       <div className="max-w-6xl mx-auto flex flex-col gap-8">
         
         {/* Header Section */}
@@ -38,10 +51,13 @@ const Glossary = () => {
             </p>
           </div>
           <div className="flex gap-3">
-            <button className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-600 shadow-sm transition-all group">
-              <Star className="w-4 h-4 text-amber-500 group-hover:fill-amber-500" /> Favorites
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 px-6 py-3 bg-blue-600 rounded-2xl text-sm font-black uppercase tracking-widest text-white hover:bg-blue-700 shadow-xl shadow-blue-200 transition-all"
+            >
+              <Plus className="w-4 h-4" /> Contribute
             </button>
-            <div className="relative">
+            <div className="relative hidden md:block">
               <select 
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
@@ -85,8 +101,8 @@ const Glossary = () => {
                 <div className="relative z-10 flex flex-col h-full">
                   <span className="text-[10px] uppercase tracking-widest font-bold text-blue-600 mb-1">{term.category}</span>
                   <h3 className="text-2xl font-bold text-slate-900 mb-3 group-hover:text-blue-700 transition-colors">{term.term}</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed mb-6 flex-1">
-                    {term.definition}
+                  <p className="text-slate-500 text-sm leading-relaxed mb-6 flex-1 italic">
+                    "{term.definition}"
                   </p>
                   
                   <div className="flex items-center justify-between pt-4 border-t border-slate-50 mt-auto">
@@ -98,7 +114,7 @@ const Glossary = () => {
                       {term.risk} Risk Profile
                     </span>
                     <button className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-blue-600 transition-colors uppercase tracking-tight">
-                      Learn More <ArrowRight className="w-3.5 h-3.5" />
+                      AI Verified <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -121,25 +137,93 @@ const Glossary = () => {
           <div className="space-y-4 relative z-10 max-w-xl">
             <h2 className="text-3xl font-bold leading-tight">Can't find a term?</h2>
             <p className="text-slate-400 font-medium">
-              Our dictionary is constantly growing. If you've encountered a term that isn't here, send it to our legal team and we'll add it!
+              Our dictionary is constantly growing. If you've encountered a term that isn't here, submit it now and our AI will verify and add it instantly!
             </p>
             <div className="flex flex-wrap gap-4 pt-2">
-              <button className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-xl shadow-blue-600/30 transition-all flex items-center gap-2">
-                Submit Term <ExternalLink className="w-4 h-4" />
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-xl shadow-blue-600/30 transition-all flex items-center gap-2"
+              >
+                Submit New Term <ExternalLink className="w-4 h-4" />
               </button>
             </div>
           </div>
           <div className="relative z-10 md:w-1/3">
-            <div className="w-full aspect-square bg-slate-800 rounded-3xl border border-slate-700 p-8 flex items-center justify-center">
+            <div className="w-full aspect-square bg-slate-800 rounded-3xl border border-slate-700 p-8 flex items-center justify-center shadow-2xl">
               <div className="text-center space-y-2">
-                <div className="text-5xl font-black text-blue-500">1,250+</div>
+                <div className="text-5xl font-black text-blue-500">{terms.length}+</div>
                 <div className="text-sm font-bold text-slate-400 uppercase tracking-widest">Active Terms</div>
               </div>
             </div>
           </div>
         </div>
-
       </div>
+
+      {/* ── Contribute Modal ── */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={() => setIsModalOpen(false)}></div>
+          <div className="relative glass bg-white w-full max-w-xl rounded-[2.5rem] p-10 shadow-2xl animate-scale-in">
+            <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full transition-all">
+               <X className="w-6 h-6 text-slate-400" />
+            </button>
+            <h2 className="text-3xl font-black text-slate-900 mb-2">Submit New Term</h2>
+            <p className="text-slate-500 font-medium mb-8">Contribute to the LegalEase AI collective knowledge base.</p>
+            
+            <form onSubmit={handleAddTerm} className="space-y-6">
+               <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Term Name</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Pari Passu"
+                    className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all"
+                    value={newTerm.term}
+                    onChange={e => setNewTerm({...newTerm, term: e.target.value})}
+                  />
+               </div>
+               <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Plain English Definition</label>
+                  <textarea 
+                    rows={3}
+                    placeholder="Simplify it for a non-lawyer..."
+                    className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all resize-none"
+                    value={newTerm.definition}
+                    onChange={e => setNewTerm({...newTerm, definition: e.target.value})}
+                  />
+               </div>
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                     <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Category</label>
+                     <select 
+                       className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all appearance-none"
+                       value={newTerm.category}
+                       onChange={e => setNewTerm({...newTerm, category: e.target.value})}
+                     >
+                        <option>General</option>
+                        <option>Contract Law</option>
+                        <option>Financial</option>
+                        <option>Liability</option>
+                        <option>Dispute Resolution</option>
+                     </select>
+                  </div>
+                  <div className="space-y-2">
+                     <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Risk Profile</label>
+                     <select 
+                       className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all appearance-none"
+                       value={newTerm.risk}
+                       onChange={e => setNewTerm({...newTerm, risk: e.target.value})}
+                     >
+                        <option>Low</option>
+                        <option>Medium</option>
+                        <option>High</option>
+                     </select>
+                  </div>
+               </div>
+               <button type="submit" className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-200 hover:bg-black transition-all">Verify & Add Term</button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

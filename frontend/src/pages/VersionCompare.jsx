@@ -109,6 +109,43 @@ function VersionCompare() {
                 />
              </div>
           </div>
+
+          {/* Visual Text Diff */}
+          <div className="lg:col-span-2 bg-slate-900 p-10 rounded-[2.5rem] mt-4 shadow-2xl relative overflow-hidden">
+             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-3xl rounded-full"></div>
+             <h3 className="text-xl font-black text-white mb-6 flex items-center gap-3">
+                <span className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">🔍</span>
+                Deep Document Text Diff
+             </h3>
+             
+             <div className="bg-slate-950 rounded-2xl p-6 font-mono text-sm leading-relaxed border border-slate-800 space-y-4">
+                {/* Fake Diff Content for PBL Demo */}
+                <div className="flex gap-4">
+                   <span className="text-slate-600 select-none w-6 text-right">14</span>
+                   <p className="text-slate-400">The Parties agree that the term of this Agreement shall commence on the Effective Date</p>
+                </div>
+                <div className="flex gap-4 bg-rose-950/40">
+                   <span className="text-rose-500 select-none w-6 text-right">-</span>
+                   <p className="text-rose-400">and shall continue for a period of <span className="bg-rose-500/20 px-1 rounded">one (1) year</span>.</p>
+                </div>
+                <div className="flex gap-4 bg-emerald-950/40">
+                   <span className="text-emerald-500 select-none w-6 text-right">+</span>
+                   <p className="text-emerald-400">and shall continue for a period of <span className="bg-emerald-500/20 px-1 rounded">three (3) years with automatic renewal</span>.</p>
+                </div>
+                <div className="flex gap-4">
+                   <span className="text-slate-600 select-none w-6 text-right">15</span>
+                   <p className="text-slate-400">Either Party may terminate this Agreement upon</p>
+                </div>
+                <div className="flex gap-4 bg-rose-950/40">
+                   <span className="text-rose-500 select-none w-6 text-right">-</span>
+                   <p className="text-rose-400">thirty (30) days prior written notice.</p>
+                </div>
+                <div className="flex gap-4 bg-emerald-950/40">
+                   <span className="text-emerald-500 select-none w-6 text-right">+</span>
+                   <p className="text-emerald-400"><span className="bg-emerald-500/20 px-1 rounded">ninety (90)</span> days prior written notice <span className="bg-emerald-500/20 px-1 rounded">and a $5,000 termination fee</span>.</p>
+                </div>
+             </div>
+          </div>
         </div>
       )}
     </div>

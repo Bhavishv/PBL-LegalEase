@@ -154,18 +154,27 @@ def classify_clause(clause_text: str) -> Tuple[str, float, str]:
         source_id      : "cuad_model" | "sbert" | <kb_entry_id> | "heuristic"
     """
     # ── Priority 1: M1 — CUAD TF-IDF + Logistic Regression ───────────────────
+    ml_risk, ml_conf, ml_source = "safe", 0.0, "none"
     if _cuad_clf is not None:
-        return _cuad_classify(clause_text)
+        ml_risk, ml_conf, ml_source = _cuad_classify(clause_text)
 
-    # ── Priority 2: M2 — Sentence-BERT semantic similarity ────────────────────
+    # ── Priority 2: M2 — Legal-BERT semantic similarity ────────────────────
+    bert_risk, bert_conf, bert_id = "safe", 0.0, None
     if is_sbert_available():
-        risk, conf, kb_id = sbert_classify(clause_text)
-        if kb_id is not None:          # above similarity threshold → trust it
-            return risk, conf, f"sbert:{kb_id}"
-        # Below threshold — fall through to TF-IDF KB
+        bert_risk, bert_conf, bert_id = sbert_classify(clause_text)
 
-    # ── Priority 3: M3 — TF-IDF KB cosine similarity ──────────────────────────
-    return _kb_classify(clause_text)
+    # ── TIE-BREAKER / GROUND TRUTH LOGIC ──
+    # If Legal-BERT and ML agree on high-risk, we are very confident.
+    # If they disagree or confidence is low, we prepare a flag for the main pipeline to use AI.
+    
+    if bert_id:
+        return bert_risk, bert_conf, f"legal-bert:{bert_id}"
+    
+    if ml_conf > 0.7:
+        return ml_risk, ml_conf, ml_source
+
+    # Default to ML but with the lower confidence
+    return ml_risk, ml_conf, ml_source
 
 
 def is_cuad_model_loaded() -> bool:
@@ -176,3 +185,47 @@ def is_cuad_model_loaded() -> bool:
 def is_sbert_model_loaded() -> bool:
     """Returns True if the Sentence-BERT M2 model is available."""
     return is_sbert_available()
+
+
+def segment_clauses(text: str) -> list[str]:
+    """
+    Intelligently splits raw contract text into individual clauses.
+    Uses regex patterns to identify sections, articles, and numbered lists.
+    """
+    if not text:
+        return []
+
+    # 1. Normalize line endings
+    text = text.replace("\r\n", "\n")
+
+    # 2. Identify common legal section markers
+    # Pattern 1: "Section X.X" or "Article X" or "Clause X"
+    # Pattern 2: Numbered lists like "1. ", "2.1 ", "(a) "
+    # Pattern 3: Double newlines (paragraphs)
+    
+    # We use a combined regex to find split points
+    # Look for: Start of line + optional space + (Numbering or Header keyword)
+    patterns = [
+        r'\n\s*(?:Section|Article|Clause|ITEM|EXHIBIT)\s+\d+', # Section 1, Article 2
+        r'\n\s*\d+\.\d+(?:\.\d+)*\s+',                       # 1.1, 2.1.1
+        r'\n\s*\d+\.\s+',                                    # 1., 2.
+        r'\n\n+',                                            # Paragraph breaks
+    ]
+    
+    combined_pattern = f"(?:{'|'.join(patterns)})"
+    
+    # Split the text
+    segments = re.split(combined_pattern, text, flags=re.IGNORECASE)
+    
+    # Clean up segments
+    clauses = []
+    for s in segments:
+        clean = s.strip()
+        if len(clean) > 20: # Ignore fragments like "Page 1" or headers
+            clauses.append(clean)
+            
+    # If no segments found, return the whole text as one clause
+    if not clauses and text.strip():
+        return [text.strip()]
+        
+    return clauses

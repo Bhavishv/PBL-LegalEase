@@ -27,6 +27,7 @@ function UploadContract() {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const videoRef = useRef(null);
   const [cameraStream, setCameraStream] = useState(null);
+  const [isDriveSyncing, setIsDriveSyncing] = useState(false);
 
   const showToast = (message, type = "info") => {
     setToast({ message, type });
@@ -213,6 +214,23 @@ function UploadContract() {
     }
   };
 
+  const handleDriveImport = (e) => {
+    e.stopPropagation();
+    setIsDriveSyncing(true);
+    showToast("Authenticating with Google Drive...", "info");
+    
+    // Simulate Drive OAuth & File Picking
+    setTimeout(() => {
+      showToast("Syncing contract from Drive...", "info");
+      setTimeout(() => {
+         const mockFile = new File(["mock content"], "NDA_GoogleDrive_Sync.pdf", { type: "application/pdf" });
+         handleFileSelect(mockFile);
+         setIsDriveSyncing(false);
+         showToast("Successfully imported from Google Drive", "success");
+      }, 1500);
+    }, 1500);
+  };
+
   return (
     <div className="glass rounded-3xl p-8 relative overflow-hidden group border border-slate-200/50 shadow-xl">
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/20 to-blue-50/20 pointer-events-none"></div>
@@ -235,10 +253,11 @@ function UploadContract() {
         ) : (
           <>
             <div
+              onClick={() => fileInputRef.current?.click()}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
-              className={`relative border-2 border-dashed rounded-[2.5rem] p-12 text-center transition-all duration-300 ${
+              className={`relative border-2 border-dashed rounded-[2.5rem] p-12 text-center cursor-pointer transition-all duration-300 hover:shadow-lg ${
                 isDragging ? "border-blue-500 bg-blue-50/50 scale-[1.02] shadow-xl" :
                 file ? "border-indigo-400 bg-indigo-50/30" : "border-slate-200 hover:border-blue-400 bg-white"
               }`}
@@ -271,7 +290,7 @@ function UploadContract() {
                     </p>
                   </div>
                   {!isUploading && (
-                    <button onClick={clearFile} className="btn-haptic text-xs font-black text-rose-500 uppercase tracking-widest hover:underline px-4 py-2 bg-rose-50 rounded-lg">Remove File</button>
+                    <button onClick={(e) => { e.stopPropagation(); clearFile(); }} className="btn-haptic text-xs font-black text-rose-500 uppercase tracking-widest hover:underline px-4 py-2 bg-rose-50 rounded-lg z-20 relative">Remove File</button>
                   )}
                 </div>
               ) : (
@@ -281,12 +300,21 @@ function UploadContract() {
                   </div>
                   <div>
                     <p className="text-lg font-black text-slate-800">Drag & drop your contract</p>
-                    <div className="flex items-center justify-center gap-2 mt-2">
-                       <button onClick={() => fileInputRef.current?.click()} className="text-blue-600 font-black hover:underline">browse files</button>
-                       <span className="text-slate-300 font-black">|</span>
-                       <button onClick={() => setShowScanner(true)} className="text-indigo-600 font-black hover:underline flex items-center gap-1">
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-2 mt-4">
+                       <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="text-blue-600 font-black hover:underline z-20 relative">browse files</button>
+                       <span className="text-slate-300 font-black hidden sm:inline">|</span>
+                       <button onClick={(e) => { e.stopPropagation(); setShowScanner(true); }} className="text-indigo-600 font-black hover:underline flex items-center gap-1 z-20 relative">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
                           scan from mobile
+                       </button>
+                       <span className="text-slate-300 font-black hidden sm:inline">|</span>
+                       <button onClick={handleDriveImport} disabled={isDriveSyncing} className="text-emerald-600 font-black hover:underline flex items-center gap-1 z-20 relative disabled:opacity-50">
+                          {isDriveSyncing ? (
+                             <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
+                          ) : (
+                             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12.01 2.39a1.09 1.09 0 0 0-.94.54L4.01 15.06l1.96 3.4 7.06-12.23-1.02-3.84z"/><path d="M5.96 18.45h14.07l-2.02-3.48H3.94l2.02 3.48z"/><path d="M12.96 6.32l6.02 10.43 2.01-3.49L13.92 2.93a1.07 1.07 0 0 0-.96-.54l-.01.01 1.01 3.92z"/></svg>
+                          )}
+                          import from drive
                        </button>
                     </div>
                   </div>

@@ -1,633 +1,416 @@
-import { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { sendChatMessage, translateText } from "../services/api";
+import React, { useState, useEffect, useRef } from "react";
+import { 
+  Shield, AlertTriangle, CheckCircle, ArrowLeft, Download, Share2, 
+  ChevronRight, Search, Filter, MessageCircle, FileText, Info,
+  Check, X, ThumbsUp, ThumbsDown, Zap, Scale, Gavel, HelpCircle,
+  Sparkles, Eye, Target, Languages, Loader2,
+  PenTool
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
-/* ─── risk helpers ───────────────────────────────────────────────── */
-const riskMeta = {
-  high: { label: "High Risk", emoji: "🔴", bar: "bg-rose-500", bg: "bg-rose-200/70" },
-  warning: { label: "Warning", emoji: "🟡", bar: "bg-amber-400", bg: "bg-amber-200/70" },
-  safe: { label: "Safe", emoji: "🟢", bar: "bg-emerald-500", bg: "bg-emerald-200/50" },
-};
-
-const scoreColor = (s) =>
-  s >= 85 ? "text-emerald-600 border-emerald-500 bg-emerald-50"
-    : s >= 60 ? "text-amber-600 border-amber-400 bg-amber-50"
-      : "text-rose-600 border-rose-500 bg-rose-50";
-
-const scoreLabel = (s) =>
-  s >= 85 ? "Safe to Sign" : s >= 60 ? "Review Carefully" : "Do NOT Sign Yet";
-const scoreEmoji = (s) => s >= 85 ? "✅" : s >= 60 ? "⚠️" : "🚫";
-
-/* ════════════════════════════════════════════════════════════════════ */
-function Analysis() {
+const Analysis = () => {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
-  const [isLive, setIsLive] = useState(false);
   const [activeClause, setActive] = useState(null);
   const [filter, setFilter] = useState("all");
   const [pageState, setPageState] = useState("loading");
-  const [activeTab, setActiveTab] = useState("clauses"); // "clauses" | "summary" | "playbook" | "deadlines"
-  const [showChat, setShowChat] = useState(false);
-  const [showQR, setShowQR] = useState(false);
-
-  /* ── TTS ── */
   const [reading, setReading] = useState(false);
+  const [activeTab, setActiveTab] = useState("breakdown");
+  const [isLive, setIsLive] = useState(true);
+  const [feedback, setFeedback] = useState({});
+  const [showSignature, setShowSignature] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  
+  // Translation State
+  const [targetLang, setTargetLang] = useState("en");
+  const [translating, setTranslating] = useState(false);
+  const [translations, setTranslations] = useState({}); // Cache translations
+
+  // Onboarding State
+  const [tourStep, setTourStep] = useState(0);
+  const [showTour, setShowTour] = useState(false);
+
   const fullTextRef = useRef("");
 
-  /* ── load session data ── */
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem("legalease_analysis");
-      if (raw) {
-        const parsed = JSON.parse(raw);
+      const saved = sessionStorage.getItem("legalease_analysis");
+      if (saved) {
+        const parsed = JSON.parse(saved);
         if (parsed?.clauses?.length) {
-          const clauses = parsed.clauses.map((c) => ({
-            ...c,
-            risk_level: c.risk_level === "high-risk" ? "high" : c.risk_level,
+          const clauses = parsed.clauses.map(c => ({
+             ...c,
+             risk_level: c.risk_level === "high-risk" ? "high" : c.risk_level
           }));
           setData({ ...parsed, clauses });
-          setIsLive(true);
           setActive(clauses[0]?.id ?? null);
           setPageState("ready");
+          if (!localStorage.getItem("tour_completed")) {
+            setTimeout(() => setShowTour(true), 1000);
+          }
           return;
         }
       }
-    } catch (_) { }
-
-    try {
-      const vault = JSON.parse(localStorage.getItem("legalease_vault") || "[]");
-      if (vault.length > 0 && vault[0]?.data?.clauses?.length) {
-        const entry = vault[0];
-        const clauses = entry.data.clauses.map((c) => ({
-          ...c,
-          risk_level: c.risk_level === "high-risk" ? "high" : c.risk_level,
-        }));
-        sessionStorage.setItem("legalease_analysis", JSON.stringify(entry.data));
-        setData({ ...entry.data, clauses });
-        setIsLive(false);
-        setActive(clauses[0]?.id ?? null);
-        setPageState("ready");
-        return;
-      }
-    } catch (_) { }
-
+    } catch (_) {}
     setPageState("empty");
   }, []);
 
-  useEffect(() => {
-    if (!data?.clauses) return;
-    fullTextRef.current = data.clauses.map((c) => c.text).join(" ");
-  }, [data]);
-
-  useEffect(() => () => window.speechSynthesis?.cancel(), []);
-
-  const toggleReading = () => {
-    if (reading) {
-      window.speechSynthesis.cancel();
-      setReading(false);
-    } else {
-      const utterance = new SpeechSynthesisUtterance(fullTextRef.current);
-      utterance.rate = 0.85;
-      utterance.onend = () => setReading(false);
-      window.speechSynthesis.speak(utterance);
-      setReading(true);
-    }
+  const handleFeedback = (clauseId, isAccurate) => {
+    setFeedback(prev => ({ ...prev, [clauseId]: isAccurate }));
   };
 
-  const clauses = data?.clauses ?? [];
-  const filtered = filter === "all" ? clauses : clauses.filter(c => c.risk_level === filter);
-  const selected = clauses.find(c => c.id === activeClause);
-  const score = data?.overall_score ?? 0;
-  const counts = {
-    high: clauses.filter(c => c.risk_level === "high").length,
-    warning: clauses.filter(c => c.risk_level === "warning").length,
-    safe: clauses.filter(c => c.risk_level === "safe").length,
-  };
+  const handleTranslate = async (text, lang) => {
+    if (lang === "en") return;
+    const cacheKey = `${text.slice(0, 50)}_${lang}`;
+    if (translations[cacheKey]) return;
 
-  if (pageState === "loading") return <LoadingSkeleton />;
-  if (pageState === "empty") return <EmptyState />;
-
-  return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in pb-24 relative min-h-screen">
-
-      {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-        <div className="flex items-center gap-4">
-          <button onClick={() => navigate(-1)} className="p-3 rounded-2xl bg-white border border-slate-200 text-slate-400 hover:text-slate-700 transition-all shadow-sm">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-          </button>
-          <div className="min-w-0">
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight truncate max-w-md">{data.filename ?? "Contract Analysis"}</h1>
-            <div className="flex items-center gap-2 mt-1">
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-widest ${isLive ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-                {isLive ? "Live Gemini AI Analysis" : "Vault Entry"}
-              </span>
-            </div>
-          </div>
-        </div>
-        <button onClick={() => navigate("/dashboard")} className="px-6 py-3 text-sm font-black text-white bg-blue-600 rounded-2xl hover:bg-blue-700 transition-all shadow-glow">
-          New Analysis
-        </button>
-      </div>
-
-      {/* ── Tab Selector ── */}
-      <div className="flex p-1.5 bg-slate-100/80 rounded-2xl mb-8 w-fit border border-slate-200 shadow-inner overflow-x-auto">
-        <button onClick={() => setActiveTab("clauses")} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "clauses" ? "bg-white text-blue-700 shadow-md" : "text-slate-500"}`}>
-          Breakdown
-        </button>
-        <button onClick={() => setActiveTab("summary")} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "summary" ? "bg-white text-blue-700 shadow-md" : "text-slate-500"}`}>
-          Entities
-        </button>
-        <button onClick={() => setActiveTab("playbook")} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "playbook" ? "bg-white text-blue-700 shadow-md" : "text-slate-500"}`}>
-          Playbook
-        </button>
-        <button onClick={() => setActiveTab("deadlines")} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "deadlines" ? "bg-white text-blue-700 shadow-md" : "text-slate-500"}`}>
-          Deadlines
-        </button>
-        <button onClick={() => setActiveTab("wisdom")} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "wisdom" ? "bg-white text-blue-700 shadow-md" : "text-slate-500"}`}>
-          Community Wisdom
-        </button>
-      </div>
-
-      {activeTab === "clauses" && (
-        <>
-          {/* ── Score & Stats ── */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className={`col-span-1 md:col-span-2 flex flex-col sm:flex-row items-center gap-8 p-8 rounded-[2.5rem] border-2 shadow-sm ${score >= 85 ? "bg-emerald-50 border-emerald-100" : score >= 60 ? "bg-amber-50 border-amber-100" : "bg-rose-50 border-rose-200"}`}>
-              <div className={`relative flex-shrink-0 w-32 h-32 rounded-full border-[6px] flex flex-col items-center justify-center shadow-xl bg-white ${scoreColor(score)}`}>
-                <span className="text-5xl font-black leading-none">{score}</span>
-                <span className="text-[10px] font-black uppercase tracking-widest opacity-60 mt-1">SCORE</span>
-              </div>
-              <div className="flex-1 text-center sm:text-left">
-                <p className="text-2xl font-black text-slate-900 mb-2">{scoreEmoji(score)} {scoreLabel(score)}</p>
-                <div className="flex flex-wrap gap-2 mt-6 justify-center sm:justify-start">
-                  {["high", "warning", "safe"].map(key => (
-                    <span key={key} className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-black border uppercase tracking-wider ${riskMeta[key].bg.replace("/70", "/30").replace("/50", "/30")} ${riskMeta[key].bar.replace("bg-", "text-").replace("500", "700")}`}>
-                      {riskMeta[key].emoji} {counts[key]} {riskMeta[key].label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="glass rounded-[2.5rem] p-6 border-slate-200 flex flex-col justify-center gap-4 relative">
-               <button onClick={() => setShowQR(!showQR)} className="absolute top-4 right-4 w-10 h-10 rounded-xl bg-white border border-slate-100 shadow-sm flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
-               </button>
-              <div className="text-center">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Contract Duration</p>
-                <p className="text-lg font-black text-slate-900">{data.entities?.expiry_date || "Continuous"}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Jurisdiction</p>
-                <p className="text-lg font-black text-slate-900">{data.jurisdiction_analysis?.location || data.entities?.jurisdiction || "Neutral"}</p>
-              </div>
-              <div className="h-px bg-slate-100"></div>
-              <div className="text-center">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Execution Status</p>
-                <p className={`text-lg font-black ${data.signature_readiness?.status === 'Execution Verified' ? 'text-emerald-600' : 'text-indigo-600'}`}>
-                   {data.signature_readiness?.status || "Draft"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Main Dashboard Content ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between px-2">
-                <h2 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400 font-sans">Clauses ({filtered.length})</h2>
-                <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl">
-                  {["all", "high", "warning"].map(f => (
-                    <button key={f} onClick={() => setFilter(f)} className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${filter === f ? "bg-white text-blue-700 shadow-md scale-110" : "text-slate-400"}`}>
-                      {f === "all" ? <span className="text-[10px] font-black uppercase">All</span> : riskMeta[f].emoji}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-                {filtered.map(clause => (
-                  <button key={clause.id} onClick={() => setActive(clause.id)} 
-                    className={`w-full text-left p-5 rounded-2xl border-2 transition-all ${activeClause === clause.id ? "border-indigo-600 bg-indigo-50/50 shadow-md translate-x-1" : "border-slate-100 bg-white hover:border-slate-200"}`}>
-                    <div className="flex items-start gap-4">
-                      <div className={`w-1 self-stretch rounded-full ${riskMeta[clause.risk_level].bar}`}></div>
-                      <div className="flex-1 min-w-0">
-                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${riskMeta[clause.risk_level].bg.replace("200/70", "200").replace("200/50", "200")}`}>
-                          {riskMeta[clause.risk_level].label}
-                        </span>
-                        <p className={`text-sm mt-2 font-bold leading-relaxed line-clamp-2 ${activeClause === clause.id ? "text-indigo-900" : "text-slate-700"}`}>{clause.text}</p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="lg:sticky lg:top-24">
-              {selected ? (
-                <ResultPane clause={selected} toggleReading={toggleReading} reading={reading} />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-64 border-4 border-dashed border-slate-100 rounded-3xl bg-slate-50 opacity-50">
-                  <p className="font-bold text-slate-400">Select a clause to analyze</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
-      {activeTab === "summary" && (
-        <SummaryDashboard data={data} goBack={() => setActiveTab("clauses")} />
-      )}
-
-      {activeTab === "playbook" && (
-        <div className="glass rounded-[2.5rem] p-10 border-slate-200 animate-slide-in-up">
-           <h2 className="text-3xl font-black text-slate-900 mb-8 flex items-center gap-4">
-              <span className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg">🎯</span>
-              Strategic Negotiation Playbook
-           </h2>
-           <div className="prose prose-slate max-w-none">
-              <div className="grid grid-cols-1 gap-8">
-                  <div className="bg-indigo-50/50 p-8 rounded-3xl border border-indigo-100 col-span-full">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 mb-4">AI Strategy Insight</p>
-                    <div className="text-slate-800 font-bold leading-relaxed whitespace-pre-wrap text-lg">
-                       {data.negotiation_playbook || "Our AI is still processing the optimal strategy for this document. Try refreshing in a few moments."}
-                    </div>
-                 </div>
-              </div>
-           </div>
-        </div>
-      )}
-
-      {activeTab === "wisdom" && (
-        <div className="animate-slide-in-up">
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="glass p-8 rounded-[2.5rem] border-slate-200">
-                 <h3 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
-                    <span className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center">🏛️</span>
-                    Jurisdiction Favorability
-                 </h3>
-                 <div className={`p-6 rounded-2xl border-2 mb-4 ${data.jurisdiction_analysis?.is_favorable ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
-                    <p className="text-sm font-bold text-slate-800 mb-2">Location: {data.jurisdiction_analysis?.location || "Not specified"}</p>
-                    <p className="text-xs font-medium text-slate-600 leading-relaxed italic">
-                       {data.jurisdiction_analysis?.description || "Our AI suggests this jurisdiction follows standard legal precedents with no unusual biases detected."}
-                    </p>
-                 </div>
-                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                    <p className="text-[10px] font-black uppercase text-blue-600 mb-1">Community Consensus</p>
-                    <p className="text-xs font-bold text-blue-900">72% of users in this industry prefer Delaware or California law for better protection.</p>
-                 </div>
-              </div>
-
-              <div className="glass p-8 rounded-[2.5rem] border-slate-200">
-                 <h3 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
-                    <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">💡</span>
-                    Collaborative Lessons
-                 </h3>
-                 <div className="space-y-4">
-                    <div className="flex gap-4 p-4 bg-white border border-slate-100 rounded-2xl shadow-sm">
-                       <div className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-black flex-shrink-0">M</div>
-                       <div>
-                          <p className="text-xs font-black text-slate-800">Pro Tip: Termination Notice</p>
-                          <p className="text-[11px] font-medium text-slate-500 mt-1">"Always try to align the notice period with your billing cycle to avoid paying for an extra month after cancellation."</p>
-                       </div>
-                    </div>
-                    <div className="flex gap-4 p-4 bg-white border border-slate-100 rounded-2xl shadow-sm">
-                       <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black flex-shrink-0">A</div>
-                       <div>
-                          <p className="text-xs font-black text-slate-800">Warning: Hidden Fees</p>
-                          <p className="text-[11px] font-medium text-slate-500 mt-1">"Look for 'Administrative Expenses' in the refund clause—this is often used to keep 20% of your deposit."</p>
-                       </div>
-                    </div>
-                 </div>
-              </div>
-           </div>
-        </div>
-      )}
-
-      {activeTab === "deadlines" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-slide-in-up">
-           {data.deadlines?.map((d, i) => (
-             <div key={i} className="glass p-8 rounded-[2.5rem] border-slate-200 hover:border-blue-400 transition-all group">
-                <div className="flex justify-between items-start mb-6">
-                    <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center font-black group-hover:bg-blue-600 group-hover:text-white transition-all">
-                       📅
-                    </div>
-                    <button 
-                      onClick={() => {
-                        const content = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:${d.title}\nDESCRIPTION:${d.description}\nDTSTART:20260101T000000Z\nEND:VEVENT\nEND:VCALENDAR`;
-                        const blob = new Blob([content], { type: 'text/calendar' });
-                        const url = window.URL.createObjectURL(blob);
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.setAttribute('download', `${d.title}.ics`);
-                        document.body.appendChild(link);
-                        link.click();
-                      }}
-                      className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:underline"
-                    >
-                      Add to Calendar
-                    </button>
-                </div>
-                <h3 className="text-xl font-black text-slate-900 mb-2">{d.title}</h3>
-                <p className="text-sm font-black text-blue-500 mb-4">{d.date}</p>
-                <p className="text-xs font-bold text-slate-500 leading-relaxed">{d.description}</p>
-             </div>
-           ))}
-           {(!data.deadlines || data.deadlines.length === 0) && (
-             <div className="col-span-full py-20 text-center text-slate-400 font-bold italic">No specific deadlines detected in this document.</div>
-           )}
-        </div>
-      )}
-
-      {/* ── QR Sync Overlay ── */}
-      {showQR && <QRCodeOverlay filename={data.filename} onClose={() => setShowQR(false)} />}
-
-      {/* ── Chat Icon & Slideover ── */}
-      <div className="fixed bottom-8 right-8 z-[60]">
-        <button onClick={() => setShowChat(!showChat)} className="w-16 h-16 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-2xl hover:scale-110 transition-transform active:scale-95 group relative">
-          {showChat ? (
-            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
-          ) : (
-            <>
-               <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 border-2 border-white rounded-full animate-ping"></span>
-               <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-            </>
-          )}
-        </button>
-        {showChat && <ChatOverlay onClose={() => setShowChat(false)} fullText={fullTextRef.current} />}
-      </div>
-
-    </div>
-  );
-}
-
-/* ── Result Detail Pane ── */
-function ResultPane({ clause, toggleReading, reading }) {
-  const [activeMode, setActiveMode] = useState("smart"); // "smart" | "action" | "hindi"
-  const [translation, setTranslation] = useState("");
-  const [translating, setTranslating] = useState(false);
-
-  const handleTranslate = async (lang) => {
     setTranslating(true);
     try {
-      const res = await translateText(clause.explanation, lang);
-      setTranslation(res.translated_text);
-      setActiveMode("hindi");
-    } catch (e) {
-      alert("Translation failed. Ensure Google Translate API is configured.");
+      const res = await fetch("http://localhost:8000/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, target_lang: lang })
+      });
+      const json = await res.json();
+      if (json.translated) {
+        setTranslations(prev => ({ ...prev, [cacheKey]: json.translated }));
+      }
+    } catch (err) {
+      console.error("Translation error:", err);
     } finally {
       setTranslating(false);
     }
   };
 
-  return (
-    <div className={`glass rounded-[2.5rem] p-8 border-2 shadow-2xl transition-all duration-300 ${clause.risk_level === 'high' ? 'border-rose-200' : 'border-slate-200'}`}>
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
-          {riskMeta[clause.risk_level].emoji} Analysis
-        </h3>
-        <button onClick={toggleReading} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${reading ? "bg-rose-500 text-white" : "bg-white border border-slate-200 text-indigo-600"}`}>
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">{reading ? <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /> : <path d="M8 5v14l11-7z" />}</svg>
-        </button>
-      </div>
+  const completeTour = () => {
+    setShowTour(false);
+    localStorage.setItem("tour_completed", "true");
+  };
 
-      <div className="flex gap-2 p-1 bg-slate-100 rounded-xl mb-6">
-        <button onClick={() => setActiveMode("smart")} className={`flex-1 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeMode === "smart" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-400"}`}>Plain English</button>
-        <button onClick={() => setActiveMode("action")} className={`flex-1 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeMode === "action" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-400"}`}>Strategic Advice</button>
-        <button onClick={() => handleTranslate("hi")} disabled={translating} className={`flex-1 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeMode === "hindi" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-400"}`}>
-          {translating ? "..." : "Translate (Hindi)"}
-        </button>
-      </div>
+  if (pageState === "loading") return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><Zap className="w-12 h-12 text-blue-500 animate-pulse" /></div>;
+  if (pageState === "empty") return <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6"><div className="max-w-md text-center glass-card p-10 rounded-[3rem]"><h2 className="text-2xl font-black mb-4">No Document Loaded</h2><button onClick={() => navigate("/dashboard")} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">Go to Dashboard</button></div></div>;
 
-      <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm min-h-[12rem]">
-         {activeMode === "smart" && (
-           <p className="text-lg font-bold text-slate-800 leading-relaxed italic border-l-4 border-indigo-500 pl-4 py-1">"{clause.explanation}"</p>
-         )}
-         {activeMode === "action" && (
-           <div className="space-y-4">
-              <div className="bg-amber-50 p-4 rounded-xl border-2 border-amber-100">
-                <p className="text-[10px] font-black uppercase text-amber-700 mb-1">Negotiation Tactic</p>
-                <p className="text-sm font-bold text-amber-900">{clause.negotiation_advice || "Standard terms. No special strategy needed."}</p>
-              </div>
-              {clause.suggested_redline && (
-                <div className="bg-emerald-50 p-4 rounded-xl border-2 border-emerald-100">
-                  <p className="text-[10px] font-black uppercase text-emerald-700 mb-1">Proposed Redline</p>
-                  <p className="text-sm font-bold text-emerald-900">{clause.suggested_redline}</p>
-                </div>
-              )}
-           </div>
-         )}
-         {activeMode === "hindi" && (
-           <p className="text-lg font-bold text-slate-800 leading-relaxed font-hindi">{translation}</p>
-         )}
-      </div>
-      
-      <div className="mt-8 pt-8 border-t border-slate-100">
-        <p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Selected clause content</p>
-        <p className="text-sm font-serif italic text-slate-500 leading-relaxed bg-slate-50 p-4 rounded-xl">{clause.text}</p>
-      </div>
-    </div>
-  );
-}
+  const clauses = data?.clauses ?? [];
+  const filtered = filter === "all" ? clauses : clauses.filter(c => c.risk_level === filter);
+  const selected = clauses.find(c => c.id === activeClause);
+  const score = data?.overall_score ?? 0;
 
-/* ── Summary Dashboard ── */
-function SummaryDashboard({ data, goBack }) {
-  return (
-    <div className="animate-fade-in">
-       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <DetailCard title="Primary Party" value={data.entities?.party_a} color="indigo" />
-          <DetailCard title="Secondary Party" value={data.entities?.party_b} color="blue" />
-          <DetailCard title="Financial Exposure" value={data.financial_data?.total_value || "Variable"} color="emerald" />
-       </div>
-       
-       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="glass p-8 rounded-[2.5rem] border-slate-200">
-            <h3 className="text-lg font-black uppercase tracking-tight mb-4 flex items-center gap-2">
-              <svg className="w-5 h-5 text-indigo-600" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" /><path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h.01a1 1 0 100-2H10zm3 0a1 1 0 000 2h.01a1 1 0 100-2H13zM7 13a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h.01a1 1 0 100-2H10zm3 0a1 1 0 000 2h.01a1 1 0 100-2H13z" clipRule="evenodd" /></svg>
-              Entity Health & Trust
-            </h3>
-            <div className="flex items-center gap-6 p-4 bg-white border border-slate-100 rounded-2xl mb-4">
-               <div className="w-16 h-16 rounded-full border-4 border-emerald-100 flex items-center justify-center text-xl font-black text-emerald-600">
-                  A+
-               </div>
-               <div>
-                  <p className="text-sm font-black text-slate-900">Verified Entity</p>
-                  <p className="text-xs font-bold text-slate-500">No major legal disputes found in public records.</p>
-               </div>
-            </div>
-            <p className="text-slate-800 font-bold leading-relaxed mb-4">Compliance Posture: {data.compliance?.gdpr_status}</p>
-            <div className="space-y-2">
-              {data.compliance?.risks?.map((r, i) => (
-                <div key={i} className="flex gap-2 text-[10px] font-black text-rose-700 bg-rose-50 px-3 py-2 rounded-xl border border-rose-100">
-                  <span>⚠</span> {r}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="glass p-8 rounded-[2.5rem] border-slate-200">
-             <h3 className="text-lg font-black uppercase tracking-tight mb-4 flex items-center gap-2">
-               <svg className="w-5 h-5 text-emerald-600" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" /><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" /></svg>
-               Financial Overview
-             </h3>
-             <div className="space-y-3">
-               <div className="flex justify-between p-4 bg-white border border-slate-100 rounded-xl">
-                 <span className="text-xs font-black text-slate-400 uppercase">Currency</span>
-                 <span className="text-sm font-black text-slate-800">{data.financial_data?.currency || "USD"}</span>
-               </div>
-               <div className="flex justify-between p-4 bg-white border border-slate-100 rounded-xl">
-                 <span className="text-xs font-black text-slate-400 uppercase">Payment Terms</span>
-                 <span className="text-sm font-black text-slate-800">{data.financial_data?.payment_terms || "Standard"}</span>
-               </div>
-               <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                  <p className="text-[10px] font-black uppercase text-blue-600 mb-1">Jurisdiction Analysis</p>
-                  <p className="text-xs font-bold text-blue-900 leading-relaxed">
-                     {data.jurisdiction_analysis?.description || "Governing law is standard."}
-                  </p>
-               </div>
-             </div>
-          </div>
-       </div>
-    </div>
-  );
-}
-
-function DetailCard({ title, value, color }) {
-  const c = color === 'indigo' ? 'text-indigo-600 bg-indigo-50 border-indigo-100' : 
-            color === 'emerald' ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 
-            'text-blue-600 bg-blue-50 border-blue-100';
-  return (
-    <div className={`p-6 rounded-[2rem] border-2 bg-white shadow-sm ${c}`}>
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1 opacity-70">{title}</p>
-      <p className="text-lg font-black truncate">{value || "Unknown"}</p>
-    </div>
-  );
-}
-
-/* ── Chat Overlay ── */
-function ChatOverlay({ onClose, fullText }) {
-  const [msg, setMsg] = useState("");
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const scrollRef = useRef(null);
-
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [history]);
-
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!msg.trim() || loading) return;
-    const userMsg = msg;
-    setMsg("");
-    setHistory(prev => [...prev, { role: "user", text: userMsg }]);
-    setLoading(true);
-
-    try {
-      const res = await sendChatMessage({ contract_text: fullText, history, query: userMsg });
-      setHistory(prev => [...prev, { role: "assistant", text: res.reply }]);
-    } catch (e) {
-      setHistory(prev => [...prev, { role: "assistant", text: "Sorry, I lost connection to Gemini." }]);
-    } finally {
-      setLoading(false);
-    }
+  const getActiveTranslation = () => {
+    if (!selected) return "";
+    if (targetLang === "en") return selected.explanation;
+    const cacheKey = `${selected.explanation.slice(0, 50)}_${targetLang}`;
+    return translations[cacheKey] || selected.explanation;
   };
 
   return (
-    <div className="absolute bottom-20 right-0 w-[400px] h-[550px] glass rounded-[2.5rem] border-2 border-indigo-200 shadow-3xl flex flex-col overflow-hidden animate-slide-in-up">
-       <div className="p-6 bg-indigo-600 text-white flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-black">L</div>
-            <span className="font-black text-sm uppercase tracking-widest">LegalEase Chat</span>
-          </div>
-          <button onClick={onClose}><svg className="w-6 h-6 rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" /></svg></button>
-       </div>
-       <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-slate-50/50">
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl text-xs font-bold text-slate-500 leading-relaxed">
-            I've read this contract. Ask me anything like "What is the notice period?" or "Is there a penalty if I cancel early?"
-          </div>
-          {history.map((h, i) => (
-            <div key={i} className={`flex ${h.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-               <div className={`max-w-[90%] p-4 rounded-2xl text-sm font-medium shadow-sm whitespace-pre-wrap leading-relaxed ${h.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white text-slate-800 border-slate-100 rounded-tl-none border'}`}>
-                 {h.text}
-               </div>
-            </div>
-          ))}
-          {loading && <div className="text-xs font-black text-indigo-400 animate-pulse">Gemini is thinking...</div>}
-          <div ref={scrollRef}></div>
-       </div>
-       <form onSubmit={handleSend} className="p-4 bg-white border-t border-slate-100 flex gap-2">
-          <input value={msg} onChange={e => setMsg(e.target.value)} placeholder="Ask about this context..." className="flex-1 px-4 py-3 bg-slate-100 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-          <button type="submit" className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md hover:bg-indigo-700 transition-all">
-            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
-          </button>
-       </form>
-    </div>
-  );
-}
+    <div className="min-h-screen bg-slate-50 p-4 md:p-10 pb-32">
+      
+      {/* ── ONBOARDING TOOLTIPS ── */}
+      {showTour && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm">
+           <div className="bg-white max-w-sm w-full rounded-[2.5rem] p-8 shadow-2xl animate-scale-in">
+              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
+                 {tourStep === 0 && <Shield className="w-8 h-8 text-blue-600" />}
+                 {tourStep === 1 && <Target className="w-8 h-8 text-blue-600" />}
+                 {tourStep === 2 && <Languages className="w-8 h-8 text-blue-600" />}
+              </div>
+              <h3 className="text-2xl font-black text-slate-900 mb-2">
+                {tourStep === 0 && "Your Trust Score"}
+                {tourStep === 1 && "Key Risks"}
+                {tourStep === 2 && "Regional Language"}
+              </h3>
+              <p className="text-slate-500 font-medium leading-relaxed mb-8">
+                {tourStep === 0 && "This number tells you at a glance how safe this contract is. A high score means you're good to go!"}
+                {tourStep === 1 && "We highlight the 'traps' in your contract so you don't have to search for them. Look for the red tags."}
+                {tourStep === 2 && "New! You can now translate the 'Plain English' summary into Hindi, Marathi, or Kannada using the language picker."}
+              </p>
+              <div className="flex items-center justify-between">
+                 <button onClick={completeTour} className="text-sm font-bold text-slate-400 hover:text-slate-600">Skip Tour</button>
+                 <button onClick={() => tourStep < 2 ? setTourStep(tourStep + 1) : completeTour()} className="px-8 py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase tracking-widest shadow-lg shadow-blue-200">{tourStep < 2 ? "Next Tip" : "Start Using"}</button>
+              </div>
+           </div>
+        </div>
+      )}
 
-/* ── QR Code Overlay ── */
-import QRCode from "react-qr-code";
-function QRCodeOverlay({ filename, onClose }) {
-  const [syncUrl, setSyncUrl] = useState("");
-
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const response = await fetch('/api/scan/session', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true'
-          },
-        });
-        const data = await response.json();
-        // Intelligent URL construction:
-        // If on localhost, use Local IP (requires same Wi-Fi).
-        // If on a tunnel (ngrok), use the tunnel origin (works everywhere + enables camera).
-        const url = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-          ? `http://${data.localIP}:${data.frontendPort || 5188}/mobile-scan/${data.sessionId}`
-          : `${window.location.origin}/mobile-scan/${data.sessionId}`;
+      <div className="max-w-6xl mx-auto flex flex-col gap-8">
         
-        setSyncUrl(url);
-      } catch (error) {
-        console.error("Error creating scan session:", error);
-      }
-    };
-    init();
-  }, []);
+        {/* Header */}
+        <div className="flex items-center justify-between">
+           <button onClick={() => navigate("/dashboard")} className="flex items-center gap-2 text-slate-400 hover:text-slate-900 font-black uppercase text-[10px] tracking-widest">
+             <ArrowLeft className="w-4 h-4" /> Exit to Dashboard
+           </button>
+           <div className="flex items-center gap-4">
+              <div className="hidden md:flex bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                 {[
+                   { code: "en", label: "English" },
+                   { code: "hi", label: "हिन्दी" },
+                   { code: "mr", label: "मराठी" },
+                   { code: "kn", label: "ಕನ್ನಡ" }
+                 ].map(lang => (
+                   <button 
+                    key={lang.code}
+                    onClick={() => {
+                      setTargetLang(lang.code);
+                      if (selected) handleTranslate(selected.explanation, lang.code);
+                    }}
+                    className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${targetLang === lang.code ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-900'}`}
+                   >
+                     {lang.label}
+                   </button>
+                 ))}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                 <button onClick={() => setShowEmailModal(true)} className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-sm hover:bg-slate-50 transition-colors">
+                   <Share2 className="w-4 h-4" /> Request Sign
+                 </button>
+                 <button onClick={() => setShowSignature(true)} className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-500/30 hover:scale-105 transition-transform">
+                   <PenTool className="w-4 h-4" /> E-Sign
+                 </button>
+                 <button className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-sm hover:bg-slate-50 transition-colors">
+                   <Download className="w-4 h-4" /> Save PDF
+                 </button>
+              </div>
+           </div>
+        </div>
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-       <div className="bg-white rounded-[3rem] p-10 max-w-sm w-full text-center shadow-3xl">
-          <div className="flex justify-between items-center mb-8">
-             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Mobile Scanner Sync</span>
-             <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">×</button>
+        {/* The Verdict (TL;DR) */}
+        <div className="glass-card rounded-[3rem] p-10 border-slate-100 flex flex-col md:flex-row items-center gap-12 relative overflow-hidden bg-white shadow-xl shadow-slate-200/50">
+           <div className={`w-32 h-32 rounded-full border-[8px] flex items-center justify-center flex-shrink-0 ${score >= 80 ? 'border-emerald-500 bg-emerald-50' : 'border-rose-500 bg-rose-50'}`}>
+              <span className="text-4xl font-black">{score}%</span>
+           </div>
+           <div className="space-y-3">
+              <h1 className="text-4xl font-black text-slate-900">
+                {score >= 80 ? "Looks safe to sign!" : score >= 60 ? "Proceed with caution." : "Significant risks found."}
+              </h1>
+              <p className="text-slate-500 font-medium text-lg leading-relaxed max-w-2xl">
+                We've analyzed your <strong>{data.filename}</strong>. Our Smart Accuracy Check found {data.high_risk_count} major risks and {data.warning_count} points you should check.
+              </p>
+           </div>
+        </div>
+
+        {/* Hidden Trap Chains */}
+        {data.trap_chains && data.trap_chains.length > 0 && (
+          <div className="bg-rose-600 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-rose-200 animate-bounce-subtle">
+             <div className="flex items-center gap-3 mb-6">
+                <AlertTriangle className="w-8 h-8 text-rose-200" />
+                <h2 className="text-2xl font-black uppercase tracking-tight">Hidden Risk Chains Detected</h2>
+             </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {data.trap_chains.map(trap => (
+                  <div key={trap.id} className="bg-rose-700/40 border border-rose-500/30 rounded-3xl p-6">
+                     <h3 className="text-lg font-black mb-2 flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-amber-400" /> {trap.type}
+                     </h3>
+                     <p className="text-rose-100 text-sm font-medium mb-4 leading-relaxed">{trap.reason}</p>
+                     <div className="bg-white/10 rounded-xl p-4">
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-rose-200 mb-1">Expert Remedy</h4>
+                        <p className="text-xs font-bold">{trap.remedy}</p>
+                     </div>
+                  </div>
+                ))}
+             </div>
           </div>
-          <div className="bg-slate-50 p-6 rounded-3xl mb-8 flex justify-center border border-slate-100">
-             {syncUrl ? <QRCode value={syncUrl} size={180} /> : <div className="w-[180px] h-[180px] bg-slate-200 animate-pulse rounded-xl"></div>}
-          </div>
-          <h3 className="text-xl font-black text-slate-900 mb-2">Scan to Analyze on Phone</h3>
-          <p className="text-sm font-bold text-slate-500 leading-relaxed mb-6">Open this QR on your mobile camera to scan physical pages of <span className="text-indigo-600">{filename}</span> directly.</p>
-          <button onClick={onClose} className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-glow">Got it</button>
-       </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+           
+           {/* Left: Clauses */}
+           <div className="lg:col-span-5 space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">The Fine Print</h3>
+                <div className="flex gap-2">
+                   {["all", "high", "warning"].map(f => (
+                     <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${filter === f ? 'bg-slate-900 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
+                        {f}
+                     </button>
+                   ))}
+                </div>
+              </div>
+
+              <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                {filtered.map(c => (
+                  <div 
+                    key={c.id} 
+                    onClick={() => {
+                      setActive(c.id);
+                      if (targetLang !== "en") handleTranslate(c.explanation, targetLang);
+                    }}
+                    className={`p-6 rounded-[2rem] border-2 cursor-pointer transition-all ${activeClause === c.id ? 'bg-white border-blue-500 shadow-xl' : 'bg-white/50 border-transparent hover:border-slate-200'}`}
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${c.risk_level === 'high' ? 'bg-rose-50 text-rose-600' : c.risk_level === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                        {c.risk_level}
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{(c.confidence * 100).toFixed(0)}% Certainty</span>
+                    </div>
+                    <p className={`text-slate-600 text-sm font-medium line-clamp-2 leading-relaxed ${c.risk_level === 'high' ? 'highlight-animated' : c.risk_level === 'warning' ? 'highlight-animated highlight-warning' : ''}`}>
+                      {c.text}
+                    </p>
+                  </div>
+                ))}
+              </div>
+           </div>
+
+           {/* Right: The Translation */}
+           <div className="lg:col-span-7">
+              {selected ? (
+                <div className="sticky top-6 space-y-6 animate-slide-in-right">
+                   <div className="glass-card rounded-[3rem] p-10 border-blue-100 bg-white shadow-2xl relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full -mr-16 -mt-16"></div>
+                      
+                      <div className="flex items-center justify-between mb-10">
+                         <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
+                               <Sparkles className="w-6 h-6" />
+                            </div>
+                            <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                              {targetLang === "en" ? "Plain English" : 
+                               targetLang === "hi" ? "हिन्दी सारांश" :
+                               targetLang === "mr" ? "मराठी सारांश" : "ಕನ್ನಡ ಸಾರಾಂಶ"}
+                            </h3>
+                         </div>
+                         {translating && <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />}
+                      </div>
+
+                      <div className="space-y-10">
+                         <div className="space-y-4">
+                            <p className="text-2xl font-medium text-slate-800 leading-relaxed min-h-[100px]">
+                               {getActiveTranslation()}
+                            </p>
+                            <p className="text-xs font-black text-blue-500 uppercase tracking-[0.2em]">Translated by LegalEase AI</p>
+                         </div>
+
+                         {selected.risk_level !== 'safe' && (
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-slate-50">
+                              <div className="p-6 bg-emerald-50 rounded-2xl">
+                                 <h4 className="text-[10px] font-black uppercase text-emerald-600 tracking-widest mb-2">How to Fix It</h4>
+                                 <p className="text-xs font-bold text-emerald-900 leading-relaxed">{selected.suggested_redline || "No specific fix needed."}</p>
+                              </div>
+                              <div className="p-6 bg-amber-50 rounded-2xl">
+                                 <h4 className="text-[10px] font-black uppercase text-amber-600 tracking-widest mb-2">The Catch</h4>
+                                 <p className="text-xs font-bold text-amber-900 leading-relaxed">{selected.negotiation_advice || "Standard clause language."}</p>
+                              </div>
+                           </div>
+                         )}
+
+                         <div className="flex items-center justify-between pt-6">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Was this summary helpful?</p>
+                            <div className="flex gap-2">
+                               <button onClick={() => handleFeedback(selected.id, true)} className={`p-3 rounded-xl transition-all ${feedback[selected.id] === true ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-400 hover:bg-emerald-50'}`}><ThumbsUp className="w-4 h-4" /></button>
+                               <button onClick={() => handleFeedback(selected.id, false)} className={`p-3 rounded-xl transition-all ${feedback[selected.id] === false ? 'bg-rose-500 text-white' : 'bg-slate-50 text-slate-400 hover:bg-rose-50'}`}><ThumbsDown className="w-4 h-4" /></button>
+                            </div>
+                         </div>
+                      </div>
+                   </div>
+
+                   <div className="p-8 bg-slate-900 rounded-[2.5rem] text-white">
+                      <div className="flex items-center gap-2 mb-4">
+                         <Eye className="w-4 h-4 text-blue-400" />
+                         <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">Original Lawyer Talk</h4>
+                      </div>
+                      <p className="text-sm font-medium text-slate-400 leading-relaxed">{selected.text}</p>
+                   </div>
+                </div>
+              ) : (
+                <div className="h-full min-h-[400px] flex flex-col items-center justify-center bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
+                   <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6">
+                      <Target className="w-8 h-8 text-slate-200" />
+                   </div>
+                   <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Tap a clause on the left to simplify it</p>
+                </div>
+              )}
+           </div>
+
+        </div>
+
+        {/* Simple Footer Details */}
+        <div className="flex flex-wrap gap-4 mt-8">
+           <div className="px-6 py-4 bg-white border border-slate-200 rounded-2xl flex items-center gap-3">
+              <Gavel className="w-4 h-4 text-slate-400" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Law: {data.jurisdiction_analysis?.location ?? 'Standard'}</span>
+           </div>
+           <div className="px-6 py-4 bg-white border border-slate-200 rounded-2xl flex items-center gap-3">
+              <Scale className="w-4 h-4 text-slate-400" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Industry Check: Verified</span>
+           </div>
+        </div>
+
+      </div>
+
+      {/* E-Signature Modal */}
+      {showSignature && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+           <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-lg shadow-2xl animate-scale-in">
+              <div className="flex items-center justify-between mb-6">
+                 <h3 className="text-2xl font-black text-slate-900 tracking-tight">Digitally Sign Contract</h3>
+                 <button onClick={() => setShowSignature(false)} className="text-slate-400 hover:text-slate-900 transition-colors">
+                   <X className="w-6 h-6" />
+                 </button>
+              </div>
+              
+              <div className="bg-slate-50 rounded-2xl p-6 border-2 border-dashed border-slate-200 mb-6 text-center">
+                 <p className="text-slate-400 font-bold mb-4">Draw your signature below</p>
+                 <div className="h-40 bg-white rounded-xl border border-slate-200 cursor-crosshair relative overflow-hidden group">
+                    <span className="absolute inset-0 flex items-center justify-center text-slate-200 font-bold text-3xl opacity-50 select-none group-hover:opacity-10 transition-opacity">Sign Here</span>
+                 </div>
+              </div>
+              
+              <p className="text-xs font-medium text-slate-500 mb-6 text-center">By signing, you agree to the verified terms of this contract. Secured by LegalEase e-Sign.</p>
+              
+              <div className="flex gap-4">
+                 <button onClick={() => setShowSignature(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 font-black rounded-xl hover:bg-slate-200 transition-colors text-sm">Cancel</button>
+                 <button onClick={() => {
+                   setShowSignature(false);
+                   alert("Contract signed successfully! Saving to Vault...");
+                 }} className="flex-1 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black rounded-xl hover:scale-105 transition-all shadow-lg shadow-blue-500/30 text-sm">Apply Signature</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Email Request Modal for Multi-Party Signing */}
+      {showEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+           <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl animate-scale-in">
+              <div className="flex items-center justify-between mb-6">
+                 <h3 className="text-2xl font-black text-slate-900 tracking-tight">Request Signature</h3>
+                 <button onClick={() => setShowEmailModal(false)} className="text-slate-400 hover:text-slate-900 transition-colors">
+                   <X className="w-6 h-6" />
+                 </button>
+              </div>
+              
+              <div className="space-y-4 mb-6">
+                 <p className="text-sm font-bold text-slate-500">Send this analyzed contract to the counter-party for their digital signature.</p>
+                 <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Recipient Email Address</label>
+                    <input type="email" placeholder="client@example.com" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium" />
+                 </div>
+                 <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Message (Optional)</label>
+                    <textarea placeholder="Please review the AI analysis and sign the contract." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium resize-none h-20"></textarea>
+                 </div>
+              </div>
+              
+              <div className="flex gap-4">
+                 <button onClick={() => setShowEmailModal(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 font-black rounded-xl hover:bg-slate-200 transition-colors text-sm">Cancel</button>
+                 <button onClick={() => {
+                   setIsSending(true);
+                   setTimeout(() => {
+                     setIsSending(false);
+                     setShowEmailModal(false);
+                     alert("Secure signing link sent to recipient!");
+                   }, 2000);
+                 }} disabled={isSending} className="flex-1 py-4 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30 text-sm disabled:opacity-50">
+                   {isSending ? "Sending..." : "Send Request"}
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+
     </div>
   );
-}
-
-import * as uuid from "uuid";
-
-/* ── Fallbacks ── */
-function LoadingSkeleton() {
-  return <div className="max-w-5xl mx-auto py-24 text-center text-slate-300 font-black uppercase tracking-widest animate-pulse">Assembling Intelligence Dashboard...</div>;
-}
-
-function EmptyState() {
-  return (
-    <div className="max-w-lg mx-auto py-32 text-center">
-       <h1 className="text-2xl font-black text-slate-900 mb-4">No Data in Context</h1>
-       <p className="text-slate-500 font-bold mb-8">Please upload a document to begin analysis.</p>
-       <button onClick={() => window.location.href='/dashboard'} className="px-8 py-3 bg-indigo-600 text-white font-black rounded-2xl uppercase tracking-widest text-xs">Back to Dashboard</button>
-    </div>
-  );
-}
+};
 
 export default Analysis;
