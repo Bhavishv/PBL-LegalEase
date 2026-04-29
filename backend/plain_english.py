@@ -172,3 +172,81 @@ def generate_explanation(clause_text: str, matched_id: str, risk_level: str) -> 
         "This clause appears to be standard and balanced. "
         "It uses common legal language that protects both parties fairly."
     )
+
+
+# ── Risk Factor Attribution (Explainable AI Engine) ───────────────────────────
+
+def generate_risk_factors(
+    clause_text: str,
+    individual_scores: dict,
+    rule_results: list = None,
+    matched_kb_id: str = None,
+    verification_result: dict = None,
+) -> list:
+    """
+    Generate a structured list of risk factors explaining WHY a clause
+    was classified at a given risk level. Each factor cites its source.
+
+    Args:
+        clause_text:        Raw clause text.
+        individual_scores:  Dict of {model_name: {risk, confidence}} from ensemble.
+        rule_results:       List of fired rule dicts relevant to this clause.
+        matched_kb_id:      Knowledge base entry ID if matched.
+        verification_result: Context verification result dict.
+
+    Returns:
+        List of dicts: [{source, reason, evidence, confidence}]
+    """
+    factors = []
+
+    # 1. Individual model factors
+    model_labels = {
+        "cuad": "CUAD ML Model",
+        "sbert": "Semantic (SBERT)",
+        "tfidf": "Knowledge Base (TF-IDF)",
+        "keyword": "Keyword Heuristics",
+    }
+
+    for model_key, label in model_labels.items():
+        score = individual_scores.get(model_key)
+        if score and score.get("risk") in ("warning", "high-risk"):
+            factors.append({
+                "source": label,
+                "reason": f"{label} classified this clause as {score['risk']}",
+                "evidence": clause_text[:100] + ("..." if len(clause_text) > 100 else ""),
+                "confidence": score.get("confidence", 0.0),
+            })
+
+    # 2. Rule engine factors
+    if rule_results:
+        for rule in rule_results:
+            factors.append({
+                "source": "Rule Engine",
+                "reason": f"Rule '{rule.get('rule_name', 'Unknown')}' fired: {rule.get('explanation', '')}",
+                "evidence": rule.get("rule_id", ""),
+                "confidence": 0.90,
+            })
+
+    # 3. Knowledge base match
+    if matched_kb_id and matched_kb_id != "ensemble":
+        for entry in KNOWLEDGE_BASE:
+            if entry["id"] == matched_kb_id:
+                factors.append({
+                    "source": "Knowledge Base Match",
+                    "reason": f"Matches known {entry.get('risk', 'risky')} clause pattern",
+                    "evidence": entry["text"][:100] + "...",
+                    "confidence": 0.85,
+                })
+                break
+
+    # 4. Context verification factor
+    if verification_result and verification_result.get("was_downgraded"):
+        factors.append({
+            "source": "Context Verifier",
+            "reason": f"Downgraded: {verification_result.get('verification_reason', '')}",
+            "evidence": verification_result.get("industry_match", ""),
+            "confidence": 0.80,
+        })
+
+    return factors
+

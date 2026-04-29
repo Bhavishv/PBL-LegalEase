@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { chatWithContract } from "../services/api";
 
 /* ─── risk helpers ───────────────────────────────────────────────── */
 const riskMeta = {
@@ -14,9 +13,10 @@ const scoreColor = (s) =>
     : s >= 60 ? "text-amber-600 border-amber-400 bg-amber-50"
       : "text-rose-600 border-rose-500 bg-rose-50";
 
-const scoreLabel = (s) =>
-  s >= 85 ? "Safe to Sign" : s >= 60 ? "Review Carefully" : "Do NOT Sign Yet";
-const scoreEmoji = (s) => s >= 85 ? "✅" : s >= 60 ? "⚠️" : "🚫";
+const scoreLabel = (s, highCount = 0, trapCount = 0) =>
+  (s >= 85 && highCount === 0 && trapCount === 0) ? "Safe to Sign" : s >= 60 ? "Review Carefully" : "Do NOT Sign Yet";
+const scoreEmoji = (s, highCount = 0, trapCount = 0) =>
+  (s >= 85 && highCount === 0 && trapCount === 0) ? "✅" : s >= 60 ? "⚠️" : "🚫";
 
 /* ─── No MOCK data — real states only ─────────────────────────────── */
 
@@ -46,17 +46,12 @@ function buildWordList(clauses) {
 function Analysis() {
   const navigate = useNavigate();
   const readerRef = useRef(null);
-  const chatScrollRef = useRef(null);
 
   const [data, setData] = useState(null);
   const [isLive, setIsLive] = useState(false);
   const [activeClause, setActive] = useState(null);
   const [filter, setFilter] = useState("all");
   const [pageState, setPageState] = useState("loading");
-  const [chatMessages, setChatMessages] = useState([]);
-  const [chatInput, setChatInput] = useState("");
-  const [chatStatus, setChatStatus] = useState("idle");
-  const [chatError, setChatError] = useState("");
 
   /* ── Contract Read-Aloud state ── */
   const [reading, setReading] = useState(false);
@@ -117,34 +112,6 @@ function Analysis() {
     fullTextRef.current = data.clauses.map((c) => c.text).join(" ");
   }, [data]);
 
-  useEffect(() => {
-    if (!data?.filename) return;
-    const storageKey = `legalease_chat_${data.filename}`;
-    try {
-      const raw = sessionStorage.getItem(storageKey);
-      if (!raw) {
-        setChatMessages([]);
-        return;
-      }
-      const parsed = JSON.parse(raw);
-      setChatMessages(Array.isArray(parsed) ? parsed : []);
-    } catch (_) {
-      setChatMessages([]);
-    }
-  }, [data?.filename]);
-
-  useEffect(() => {
-    if (!data?.filename) return;
-    const storageKey = `legalease_chat_${data.filename}`;
-    sessionStorage.setItem(storageKey, JSON.stringify(chatMessages));
-  }, [chatMessages, data?.filename]);
-
-  useEffect(() => {
-    chatScrollRef.current?.scrollTo({
-      top: chatScrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [chatMessages, chatStatus]);
 
   /* ── cleanup TTS on unmount ── */
   useEffect(() => () => window.speechSynthesis?.cancel(), []);
@@ -191,55 +158,6 @@ function Analysis() {
 
   const toggleReading = () => (reading ? stopReading() : startReading());
 
-  const handleChatSubmit = async (e) => {
-    e.preventDefault();
-    const message = chatInput.trim();
-    const contractText = fullTextRef.current.trim();
-
-    if (!message || chatStatus === "loading") return;
-    if (!contractText) {
-      setChatError("No contract text is available to answer questions yet.");
-      return;
-    }
-
-    const nextUserMessage = { role: "user", content: message };
-    const nextHistory = [...chatMessages, nextUserMessage];
-
-    setChatInput("");
-    setChatError("");
-    setChatStatus("loading");
-    setChatMessages(nextHistory);
-
-    try {
-      const result = await chatWithContract({
-        contractText,
-        contractFilename: data?.filename ?? "contract.txt",
-        history: chatMessages,
-        message,
-      });
-
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: result.reply || "No reply received.",
-        },
-      ]);
-
-      if (result.error) {
-        setChatError(
-          result.error === "no_api_key"
-            ? "Gemini API key is not configured on the backend."
-            : ""
-        );
-      }
-    } catch (err) {
-      setChatMessages((prev) => prev.slice(0, -1));
-      setChatError(err.message || "Chat request failed. Please try again.");
-    } finally {
-      setChatStatus("idle");
-    }
-  };
 
   /* ─── Derived values ────────────────────────────────────────────── */
   const clauses = data?.clauses ?? [];
@@ -247,10 +165,11 @@ function Analysis() {
   const selected = clauses.find((c) => c.id === activeClause);
   const score = data?.overall_score ?? 0;
   const counts = {
-    high: clauses.filter((c) => c.risk_level === "high").length,
+    high: clauses.filter((c) => c.risk_level === "high" || c.risk_level === "high-risk").length,
     warning: clauses.filter((c) => c.risk_level === "warning").length,
     safe: clauses.filter((c) => c.risk_level === "safe").length,
   };
+  const trapCount = data?.trap_chains?.length ?? 0;
 
   // Build real-word-only list for rendering (no space tokens)
   const renderWords = wordListRef.current.filter((t) => !t.space);
@@ -289,17 +208,28 @@ function Analysis() {
       </div>
 
       {/* ── Hero Score ───────────────────────────────────────────── */}
-      <div className={`flex flex-col sm:flex-row items-center gap-6 p-6 rounded-2xl border-2 mb-8 shadow-sm ${score >= 85 ? "bg-emerald-50 border-emerald-200" : score >= 60 ? "bg-amber-50 border-amber-200" : "bg-rose-50 border-rose-200"}`}>
+      <div className={`flex flex-col sm:flex-row items-center gap-6 p-6 rounded-2xl border-2 mb-8 shadow-sm ${score >= 85 && counts.high === 0 ? "bg-emerald-50 border-emerald-200" : score >= 60 ? "bg-amber-50 border-amber-200" : "bg-rose-50 border-rose-200"}`}>
         <div className={`flex-shrink-0 w-28 h-28 rounded-full border-4 flex flex-col items-center justify-center shadow-md ${scoreColor(score)}`}>
           <span className="text-4xl font-black">{score}</span>
           <span className="text-xs font-bold uppercase tracking-wide opacity-70">/ 100</span>
         </div>
         <div className="flex-1 text-center sm:text-left">
-          <p className="text-2xl font-black text-slate-900">{scoreEmoji(score)} {scoreLabel(score)}</p>
+          <p className="text-2xl font-black text-slate-900">{scoreEmoji(score, counts.high, trapCount)} {scoreLabel(score, counts.high, trapCount)}</p>
           <p className="text-base text-slate-600 mt-1 font-medium">
-            {score >= 85 ? "This contract appears fair and balanced." : score >= 60 ? "Some clauses need attention before signing." : "Serious risks found. Do not sign without reviewing every flagged item."}
+            {score >= 85 && counts.high === 0 && !data.trap_chains?.length
+              ? "This contract appears fair and balanced."
+              : score >= 60
+                ? `Some clauses need attention before signing.${data.trap_chains?.length ? ` ${data.trap_chains.length} hidden trap pattern${data.trap_chains.length > 1 ? "s" : ""} found between clauses.` : ""}${counts.high > 0 ? ` ${counts.high} high-risk clause${counts.high > 1 ? "s" : ""} detected.` : ""}`
+                : `Serious risks found — ${counts.high} high-risk clause${counts.high !== 1 ? "s" : ""} detected.${data.trap_chains?.length ? ` ${data.trap_chains.length} hidden trap${data.trap_chains.length > 1 ? "s" : ""} between clauses make it worse.` : ""} Review every flagged item before signing.`
+            }
           </p>
           <div className="flex flex-wrap gap-2 mt-4 justify-center sm:justify-start">
+            {data.contract_type && data.contract_type !== "general" && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold border bg-indigo-100 text-indigo-700 border-indigo-200">
+                📋 {data.contract_type.charAt(0).toUpperCase() + data.contract_type.slice(1)} Contract
+                {data.contract_type_confidence > 0 && <span className="text-indigo-400 font-medium"> — {Math.round(data.contract_type_confidence * 100)}%</span>}
+              </span>
+            )}
             {[
               { key: "high", bg: "bg-rose-100 text-rose-700 border-rose-200" },
               { key: "warning", bg: "bg-amber-100 text-amber-700 border-amber-200" },
@@ -312,6 +242,11 @@ function Analysis() {
             {data.trap_chains?.length > 0 && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold border bg-purple-100 text-purple-700 border-purple-200">
                 ⚡ {data.trap_chains.length} Trap Chain{data.trap_chains.length > 1 ? "s" : ""}
+              </span>
+            )}
+            {data.manual_review_clauses > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold border bg-orange-100 text-orange-700 border-orange-200">
+                🔍 {data.manual_review_clauses} Need Manual Review
               </span>
             )}
           </div>
@@ -437,26 +372,100 @@ function Analysis() {
         </div>
       </div>
 
-      {/* ── Trap Chain Alerts ──────────────────────────────────── */}
+      {/* ── Rule Engine Alerts ─────────────────────────────────── */}
+      {data.rule_engine_alerts?.length > 0 && (
+        <div className="space-y-3 mb-8">
+          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">🧠 Rule Engine Alerts</h2>
+          {data.rule_engine_alerts.map((r, i) => (
+            <div key={i} className={`flex gap-4 p-4 rounded-2xl border ${r.severity === "high-risk" ? "bg-rose-50 border-rose-200" : "bg-amber-50 border-amber-200"}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${r.severity === "high-risk" ? "bg-rose-100 text-rose-600" : "bg-amber-100 text-amber-600"}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className={`font-bold ${r.severity === "high-risk" ? "text-rose-900" : "text-amber-900"}`}>{r.rule_name}</p>
+                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${r.severity === "high-risk" ? "bg-rose-200 text-rose-700" : "bg-amber-200 text-amber-700"}`}>{r.severity}</span>
+                </div>
+                <p className={`text-sm mt-0.5 ${r.severity === "high-risk" ? "text-rose-700" : "text-amber-700"}`}>{r.explanation}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Trap Chain Alerts (Graph-Based) ────────────────────── */}
       {data.trap_chains?.length > 0 && (
         <div className="space-y-3 mb-8">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">⚡ Detected Clause Traps</h2>
+          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">⚡ Clause Relationship Traps</h2>
           {data.trap_chains.map((tc, i) => (
-            <div key={i} className="flex gap-4 p-4 rounded-2xl bg-purple-50 border border-purple-200">
-              <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0 text-purple-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            <div key={i} className="p-4 rounded-2xl bg-purple-50 border border-purple-200">
+              <div className="flex gap-4">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0 text-purple-600">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-purple-900">{tc.name}</p>
+                    {tc.danger_score != null && (
+                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${tc.danger_score >= 70 ? "bg-rose-200 text-rose-700" : tc.danger_score >= 40 ? "bg-amber-200 text-amber-700" : "bg-purple-200 text-purple-700"}`}>
+                        Danger: {Math.round(tc.danger_score)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-purple-700 mt-0.5">{tc.description}</p>
+                  {tc.predicted_consequence && (
+                    <p className="text-sm font-bold text-purple-900 mt-2 bg-purple-100 rounded-lg px-3 py-2">⚠️ {tc.predicted_consequence}</p>
+                  )}
+                  {tc.matched_keywords?.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {tc.matched_keywords.map((kw, j) => (
+                        <span key={j} className="text-xs font-bold px-2 py-0.5 bg-purple-200 text-purple-800 rounded-full">"{kw}"</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div>
-                <p className="font-bold text-purple-900">{tc.name}</p>
-                <p className="text-sm text-purple-700 mt-0.5">{tc.description}</p>
-                {tc.matched_keywords?.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {tc.matched_keywords.map((kw, j) => (
-                      <span key={j} className="text-xs font-bold px-2 py-0.5 bg-purple-200 text-purple-800 rounded-full">"{kw}"</span>
+              {/* Relationship graph visualization */}
+              {tc.relationship_graph?.edges?.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-purple-200">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-purple-400 mb-2">Clause Relationships</p>
+                  <div className="flex flex-wrap gap-2">
+                    {tc.relationship_graph.edges.map((edge, ei) => (
+                      <div key={ei} className="inline-flex items-center gap-1.5 text-xs font-bold bg-white rounded-lg px-3 py-1.5 border border-purple-200 text-purple-700">
+                        <span>{edge.from?.split('_')[0]?.replace('c','Clause ')}</span>
+                        <span className="text-purple-400">→</span>
+                        <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 rounded">{edge.label}</span>
+                        <span className="text-purple-400">→</span>
+                        <span>{edge.to?.split('_')[0]?.replace('c','Clause ')}</span>
+                      </div>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+              {/* Actual Clauses Involved */}
+              {tc.matched_clauses?.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-purple-200">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-purple-400 mb-2">Clauses Causing This Trap</p>
+                  <div className="space-y-2">
+                    {tc.matched_clauses.map((clauseIdx) => {
+                      const c = clauses[clauseIdx];
+                      if (!c) return null;
+                      return (
+                        <div key={clauseIdx} className="bg-white rounded-lg p-3 border border-purple-100 shadow-sm hover:border-purple-300 transition-colors cursor-pointer" onClick={() => { setActive(c.id); setFilter("all"); window.scrollTo({top: 500, behavior: "smooth"}); }}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-xs font-bold text-slate-500">Clause {clauseIdx + 1}</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${c.risk_level === 'high' || c.risk_level === 'high-risk' ? 'bg-rose-100 text-rose-700' : c.risk_level === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                              {c.risk_level === 'high-risk' || c.risk_level === 'high' ? 'High Risk' : c.risk_level.charAt(0).toUpperCase() + c.risk_level.slice(1)}
+                            </span>
+                            <span className="text-[10px] font-medium text-purple-400 ml-auto">Click to see explanation ↓</span>
+                          </div>
+                          <p className="text-sm text-slate-700 italic">"{c.text}"</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -496,6 +505,12 @@ function Analysis() {
                       <div className="flex items-center gap-2 mb-1">
                         <span>{meta.emoji}</span>
                         <span className="text-xs font-bold uppercase tracking-wide">{meta.label}</span>
+                        {clause.confidence_stability === "Manual Review Recommended" && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded-full">🔍 Review</span>
+                        )}
+                        {clause.context_verified && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full">✓ Verified</span>
+                        )}
                         {clause.confidence && <span className="text-xs font-medium text-slate-400 ml-auto">{Math.round(clause.confidence * 100)}%</span>}
                       </div>
                       <p className="text-sm text-slate-700 line-clamp-2 font-medium">{clause.text}</p>
@@ -510,7 +525,7 @@ function Analysis() {
         {/* Right — Clause Detail (plain English explanation) */}
         <div className="lg:sticky lg:top-24 self-start">
           {selected ? (
-            <ClauseDetail clause={selected} />
+            <ClauseDetail clause={selected} overallScore={score} highCount={counts.high} trapCount={trapCount} />
           ) : (
             <div className="h-64 flex flex-col items-center justify-center text-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-8">
               <svg className="w-10 h-10 text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -522,88 +537,7 @@ function Analysis() {
         </div>
       </div>
 
-      {/* ── Contract Chat ─────────────────────────────────────── */}
-      <div className="mt-8 bg-white border-2 border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">Ask About This Contract</h2>
-            <p className="text-sm text-slate-600 mt-1">
-              Ask follow-up questions about obligations, risks, negotiation points, or missing protections.
-            </p>
-          </div>
-          <span className="text-xs font-semibold text-slate-400">
-            Uses the analyzed contract as context
-          </span>
-        </div>
 
-        <div
-          ref={chatScrollRef}
-          className="max-h-96 overflow-y-auto px-5 py-5 space-y-3 bg-slate-50/60"
-        >
-          {chatMessages.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-5 text-sm text-slate-500">
-              Try asking: "What is the riskiest clause?", "What should I negotiate first?", or "Summarize my payment obligations."
-            </div>
-          ) : (
-            chatMessages.map((msg, idx) => (
-              <div
-                key={`${msg.role}-${idx}`}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-3xl rounded-2xl px-4 py-3 shadow-sm border ${
-                    msg.role === "user"
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-slate-700 border-slate-200"
-                  }`}
-                >
-                  <p className="text-xs font-bold uppercase tracking-wide opacity-70 mb-1">
-                    {msg.role === "user" ? "You" : "LegalEase AI"}
-                  </p>
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                </div>
-              </div>
-            ))
-          )}
-
-          {chatStatus === "loading" && (
-            <div className="flex justify-start">
-              <div className="max-w-3xl rounded-2xl px-4 py-3 shadow-sm border bg-white text-slate-700 border-slate-200">
-                <p className="text-xs font-bold uppercase tracking-wide opacity-70 mb-1">LegalEase AI</p>
-                <p className="text-sm leading-relaxed">Thinking about your contract...</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <form onSubmit={handleChatSubmit} className="p-5 border-t border-slate-100 bg-white">
-          <label htmlFor="contract-chat" className="sr-only">
-            Ask a question about this contract
-          </label>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <textarea
-              id="contract-chat"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Ask a question about this contract..."
-              rows={3}
-              className="flex-1 rounded-2xl border-2 border-slate-200 px-4 py-3 text-sm text-slate-700 resize-none focus:outline-none focus:border-blue-500 bg-slate-50"
-              disabled={chatStatus === "loading" || pageState !== "ready"}
-            />
-            <button
-              type="submit"
-              disabled={chatStatus === "loading" || !chatInput.trim() || pageState !== "ready"}
-              className="sm:self-end px-5 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:from-blue-700 hover:to-indigo-700 disabled:from-slate-200 disabled:to-slate-300 disabled:text-slate-400 disabled:cursor-not-allowed transition-all"
-            >
-              {chatStatus === "loading" ? "Asking..." : "Ask AI"}
-            </button>
-          </div>
-
-          {chatError && (
-            <p className="mt-3 text-sm font-medium text-rose-600">{chatError}</p>
-          )}
-        </form>
-      </div>
 
       {/* ── Bottom CTA ─────────────────────────────────────────── */}
       <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center">
@@ -624,12 +558,28 @@ function Analysis() {
   );
 }
 
-/* ── Clause Detail Card ─────────────────────────────────────────── */
-function ClauseDetail({ clause }) {
+/* ── Clause Detail Card (Decision Intelligence Enhanced) ────────── */
+function ClauseDetail({ clause, overallScore = 100, highCount = 0, trapCount = 0 }) {
+  const [showEnsemble, setShowEnsemble] = useState(false);
   const meta = riskMeta[clause.risk_level] ?? riskMeta.safe;
   const bgMap = { high: "bg-rose-50 border-rose-200", warning: "bg-amber-50 border-amber-200", safe: "bg-emerald-50 border-emerald-200" };
   const hdMap = { high: "text-rose-800", warning: "text-amber-800", safe: "text-emerald-800" };
   const txtMap = { high: "text-rose-900", warning: "text-amber-900", safe: "text-emerald-900" };
+
+  const stabilityColor = {
+    "High Confidence": "bg-emerald-100 text-emerald-700",
+    "Moderate Confidence": "bg-amber-100 text-amber-700",
+    "Low Confidence": "bg-orange-100 text-orange-700",
+    "Manual Review Recommended": "bg-rose-100 text-rose-700",
+  };
+
+  const severityLabels = {
+    financial_risk: { label: "Financial", icon: "💰" },
+    privacy_risk: { label: "Privacy", icon: "🔒" },
+    legal_lock_in_risk: { label: "Lock-In", icon: "🔗" },
+    dispute_difficulty: { label: "Dispute", icon: "⚖️" },
+    exit_difficulty: { label: "Exit", icon: "🚪" },
+  };
 
   return (
     <div className={`rounded-2xl border-2 p-6 ${bgMap[clause.risk_level] ?? "bg-white border-slate-200"} animate-fade-in`}>
@@ -637,6 +587,24 @@ function ClauseDetail({ clause }) {
         <span className="text-2xl">{meta.emoji}</span>
         <span className={`text-lg font-extrabold ${hdMap[clause.risk_level]}`}>{meta.label}</span>
         {clause.confidence && <span className="ml-auto text-sm font-bold text-slate-400">{Math.round(clause.confidence * 100)}% match</span>}
+      </div>
+
+      {/* Confidence Stability + Context Verification badges */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {clause.confidence_stability && (
+          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${stabilityColor[clause.confidence_stability] || "bg-slate-100 text-slate-600"}`}>
+            {clause.confidence_stability === "High Confidence" ? "✅" : clause.confidence_stability === "Manual Review Recommended" ? "🔍" : "⚠️"}
+            {clause.confidence_stability}
+          </span>
+        )}
+        {clause.context_verified && (
+          <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
+            ✓ Standard Practice
+          </span>
+        )}
+        {clause.verification_note && (
+          <span className="text-xs text-slate-500 italic">{clause.verification_note}</span>
+        )}
       </div>
 
       {/* Plain English */}
@@ -647,11 +615,88 @@ function ClauseDetail({ clause }) {
         </p>
       </div>
 
+      {/* Contextual note: safe clause in a risky contract */}
+      {clause.risk_level === "safe" && (highCount > 0 || trapCount > 0 || overallScore < 60) && (
+        <div className="p-3 rounded-xl flex items-start gap-2 bg-blue-50 text-blue-800 border border-blue-200 mb-4">
+          <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-xs font-bold leading-snug">
+            This particular clause is safe, but other clauses in this contract have serious risks. Not every clause is dangerous — this one is standard and acceptable.
+          </p>
+        </div>
+      )}
+
       {/* Original text */}
       <div className="bg-white/60 rounded-xl p-4 border border-slate-200 mb-4">
         <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Original clause text</p>
         <p className="text-sm text-slate-600 leading-relaxed font-serif italic">{clause.text}</p>
       </div>
+
+      {/* Severity Radar (5-dimension bars) */}
+      {clause.severity && Object.values(clause.severity).some(v => v > 0) && (
+        <div className="bg-white rounded-xl p-4 border border-slate-200 mb-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Severity Breakdown</p>
+          <div className="space-y-2">
+            {Object.entries(severityLabels).map(([key, { label, icon }]) => {
+              const val = clause.severity?.[key] ?? 0;
+              return (
+                <div key={key} className="flex items-center gap-2">
+                  <span className="text-sm w-6">{icon}</span>
+                  <span className="text-xs font-bold text-slate-600 w-16">{label}</span>
+                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${val >= 0.7 ? "bg-rose-500" : val >= 0.4 ? "bg-amber-400" : "bg-emerald-400"}`}
+                         style={{ width: `${Math.max(val * 100, 2)}%` }} />
+                  </div>
+                  <span className="text-xs font-bold text-slate-400 w-8 text-right">{Math.round(val * 100)}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Risk Factors (Explainable AI) */}
+      {clause.risk_factors?.length > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-slate-200 mb-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Why This Was Flagged</p>
+          <div className="space-y-2">
+            {clause.risk_factors.map((f, i) => (
+              <div key={i} className="flex items-start gap-2 text-sm">
+                <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 mt-0.5 rounded-full bg-indigo-100 text-indigo-700">{f.source}</span>
+                <span className="text-slate-700">{f.reason}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ensemble Transparency */}
+      {clause.ensemble_scores && Object.keys(clause.ensemble_scores).length > 0 && (
+        <div className="mb-4">
+          <button onClick={() => setShowEnsemble(!showEnsemble)}
+            className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-1">
+            <svg className={`w-3 h-3 transition-transform ${showEnsemble ? "rotate-90" : ""}`} fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+            </svg>
+            How was this scored?
+          </button>
+          {showEnsemble && (
+            <div className="mt-2 bg-white rounded-xl p-4 border border-slate-200 space-y-2 animate-fade-in">
+              {Object.entries(clause.ensemble_scores).map(([model, info]) => (
+                <div key={model} className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500 w-20 uppercase">{model}</span>
+                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${info.risk === "high-risk" ? "bg-rose-400" : info.risk === "warning" ? "bg-amber-400" : "bg-emerald-400"}`}
+                         style={{ width: `${Math.max((info.confidence || 0) * 100, 5)}%` }} />
+                  </div>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{info.risk} {Math.round((info.confidence || 0) * 100)}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Action advice */}
       {clause.risk_level !== "safe" && (

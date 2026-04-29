@@ -53,16 +53,16 @@ function Dashboard() {
           </svg>
         </Link>
 
-        <Link to="/crowd-intel"
+        <Link to="/version-compare"
           className="group flex items-center gap-4 p-5 bg-white rounded-2xl border-2 border-slate-100 hover:border-blue-300 hover:shadow-md transition-all">
           <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-100 transition-colors">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
             </svg>
           </div>
           <div>
-            <p className="font-bold text-slate-800 group-hover:text-blue-700 transition-colors">Crowd Intelligence</p>
-            <p className="text-sm text-slate-500">See what others found risky</p>
+            <p className="font-bold text-slate-800 group-hover:text-blue-700 transition-colors">Compare Versions</p>
+            <p className="text-sm text-slate-500">Compare two contract versions side by side</p>
           </div>
           <svg className="w-5 h-5 text-slate-300 group-hover:text-blue-400 ml-auto transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

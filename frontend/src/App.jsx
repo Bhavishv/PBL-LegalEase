@@ -8,7 +8,6 @@ import Dashboard from "./pages/Dashboard";
 import MobileScannerPage from "./pages/MobileScannerPage";
 import Analysis from "./pages/Analysis";
 import VersionCompare from "./pages/VersionCompare";
-import CrowdIntel from "./pages/CrowdIntel";
 import ContractVault from "./pages/ContractVault";
 
 function App() {
@@ -22,7 +21,6 @@ function App() {
         <Route path="/mobile-scan/:sessionId" element={<MobileScannerPage />} />
         <Route path="/analysis" element={<Layout><Analysis /></Layout>} />
         <Route path="/version-compare" element={<Layout><VersionCompare /></Layout>} />
-        <Route path="/crowd-intel" element={<Layout><CrowdIntel /></Layout>} />
         <Route path="/vault" element={<Layout><ContractVault /></Layout>} />
       </Routes>
     </BrowserRouter>

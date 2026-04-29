@@ -1,18 +1,25 @@
 """
 main.py — LegalEase AI Backend (FastAPI)
 
+Hybrid Legal Intelligence Engine — Multi-Clause Legal Reasoning Framework.
+
 Endpoints:
   GET  /                    → health check
   POST /api/analyze         → full contract analysis (upload file)
   POST /api/analyze-text    → full contract analysis (raw text JSON)
+  POST /api/chat            → conversational Q&A about a contract
 
-Pipeline:
-  1. Extract text from uploaded file
-  2. Segment text into clauses
-  3. Classify each clause (RAG + keyword heuristics)
-  4. Generate plain-English explanation for each clause
-  5. Detect trap chains across the contract
-  6. Compute overall risk score
+Decision Intelligence Pipeline (10 steps):
+  1.  Segment text into clauses
+  2.  Detect contract type (rental, SaaS, employment, loan, NDA)
+  3.  Run ALL classifiers (CUAD, SBERT, TF-IDF, keywords)
+  4.  Run confidence calibration (prediction stability)
+  5.  Run context verification (false-positive prevention)
+  6.  Run rule engine (cross-clause pattern detection)
+  7.  Analyze severity per clause (5 risk dimensions)
+  8.  Detect trap chains (graph-based relationship intelligence)
+  9.  Compute overall risk score (with full factor breakdown)
+  10. Generate risk factors + plain-English explanations
 """
 
 import os
@@ -20,17 +27,22 @@ import uuid
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
 
 load_dotenv()  # loads GEMINI_API_KEY and other vars from .env
 
 from text_extractor import extract_text
 from clause_segmenter import segment_clauses
-from risk_classifier import classify_clause
-from plain_english import generate_explanation
+from risk_classifier import classify_clause_ensemble
+from plain_english import generate_explanation, generate_risk_factors
 from trap_chain_detector import detect_trap_chains
 from risk_scorer import compute_risk_score
+from contract_type_detector import detect_contract_type
+from rule_engine import evaluate_rules
+from confidence_calibrator import calibrate_prediction
+from context_verifier import verify_clause_context
+from severity_analyzer import analyze_severity, aggregate_severity, SeverityBreakdown
 
 _genai_client = None
 
@@ -49,9 +61,13 @@ def _get_genai_client():
 
 # ── App setup ────────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="LegalEase AI Backend",
-    description="Contract analysis: clause detection, risk classification, plain English explanations, trap chain detection.",
-    version="1.0.0",
+    title="LegalEase AI — Hybrid Legal Intelligence Engine",
+    description=(
+        "Multi-Clause Legal Reasoning Framework: clause detection, ensemble risk "
+        "classification, confidence calibration, context verification, graph-based "
+        "trap chain detection, severity prediction, and explainable risk analysis."
+    ),
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -67,15 +83,36 @@ app.add_middleware(
 class ClauseResult(BaseModel):
     id: str
     text: str
-    risk_level: str           # "safe" | "warning" | "high-risk"
+    risk_level: str                                 # "safe" | "warning" | "high-risk"
     confidence: float
     explanation: str
     matched_kb_id: Optional[str] = None
+    # ── New fields from Decision Intelligence Layer ──
+    severity: Optional[Dict[str, float]] = None     # 5-dimension severity breakdown
+    risk_factors: Optional[List[Dict]] = None       # explainable risk factor list
+    ensemble_scores: Optional[Dict] = None          # individual model scores
+    confidence_stability: Optional[str] = None      # "High Confidence" | "Manual Review"
+    stability_score: Optional[float] = None         # 0.0–1.0
+    context_verified: Optional[bool] = None         # was context verification applied?
+    verification_note: Optional[str] = None         # "Standard in SaaS contracts"
 
 class TrapChainResult(BaseModel):
     name: str
     description: str
     matched_keywords: List[str]
+    matched_clauses: Optional[List[int]] = None
+    danger_score: Optional[float] = None
+    relationship_graph: Optional[Dict] = None
+    predicted_consequence: Optional[str] = None
+    risk_tags: Optional[List[str]] = None
+
+class RuleAlert(BaseModel):
+    rule_id: str
+    rule_name: str
+    severity: str
+    matched_clauses: List[int]
+    explanation: str
+    risk_tags: List[str]
 
 class AnalysisResponse(BaseModel):
     filename: str
@@ -88,38 +125,101 @@ class AnalysisResponse(BaseModel):
     safe_count: int
     trap_chains: List[TrapChainResult]
     clauses: List[ClauseResult]
+    # ── New fields from Decision Intelligence Layer ──
+    contract_type: Optional[str] = None
+    contract_type_confidence: Optional[float] = None
+    severity_summary: Optional[Dict[str, float]] = None
+    rule_engine_alerts: Optional[List[RuleAlert]] = None
+    ensemble_method: Optional[str] = "weighted_vote"
+    score_breakdown: Optional[Dict] = None
+    manual_review_clauses: Optional[int] = 0
 
 class TextRequest(BaseModel):
     text: str
     filename: Optional[str] = "contract.txt"
 
-class ChatMessage(BaseModel):
-    role: str   # "user" | "model"
-    content: str
-
-class ChatRequest(BaseModel):
-    contract_text: str          # full contract text for context
-    contract_filename: str
-    history: List[ChatMessage]  # previous turns
-    message: str                # new user message
-
-class ChatResponse(BaseModel):
-    reply: str
-    error: Optional[str] = None
 
 # ── Core pipeline function ────────────────────────────────────────────────────
 
 def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
-    # 1 – Segment into clauses
+    # ── Step 1: Segment into clauses ──────────────────────────────────────
     clauses_text = segment_clauses(raw_text)
 
-    # 2 & 3 & 4 – Classify + explain each clause
+    # ── Step 2: Detect contract type ──────────────────────────────────────
+    contract_type, type_confidence = detect_contract_type(raw_text)
+
+    # ── Step 3+4+5+7+10: Classify, calibrate, verify, severity, explain ──
     classified: List[ClauseResult] = []
+    severity_breakdowns: List[SeverityBreakdown] = []
+    verification_downgrades = 0
+    manual_review_count = 0
+
     for i, clause_text in enumerate(clauses_text):
         if len(clause_text.strip()) < 20:     # skip very short fragments
             continue
-        risk_level, confidence, kb_id = classify_clause(clause_text)
+
+        # Step 3: Run ALL classifiers (ensemble)
+        ensemble = classify_clause_ensemble(clause_text)
+        risk_level = ensemble["risk_level"]
+        confidence = ensemble["confidence"]
+        kb_id = ensemble.get("matched_kb_id")
+        individual_scores = ensemble.get("individual_scores", {})
+        model_predictions = ensemble.get("model_predictions", {})
+
+        # Step 4: Confidence calibration
+        calibration = calibrate_prediction(
+            cuad_result=model_predictions.get("cuad"),
+            sbert_result=model_predictions.get("sbert"),
+            tfidf_result=model_predictions.get("tfidf"),
+            keyword_result=model_predictions.get("keyword"),
+        )
+        stability_label = calibration.stability_label
+        stability_score = calibration.stability_score
+        if stability_label == "Manual Review Recommended":
+            manual_review_count += 1
+
+        # Step 5: Context verification (false-positive prevention)
+        verification = verify_clause_context(
+            clause_text=clause_text,
+            classified_risk=risk_level,
+            contract_type=contract_type,
+            confidence=confidence,
+        )
+        verified_risk = verification.verified_risk
+        was_downgraded = verification.was_downgraded
+        if was_downgraded:
+            risk_level = verified_risk
+            verification_downgrades += 1
+
+        # Step 7: Severity analysis (5 dimensions)
+        kb_entry = None
+        severity_tags = None
+        if kb_id:
+            from knowledge_base import KNOWLEDGE_BASE
+            for entry in KNOWLEDGE_BASE:
+                if entry["id"] == kb_id:
+                    kb_entry = entry
+                    severity_tags = entry.get("severity_tags")
+                    break
+
+        severity = analyze_severity(
+            clause_text=clause_text,
+            risk_level=risk_level,
+            matched_kb_id=kb_id,
+            contract_type=contract_type,
+            severity_tags=severity_tags,
+        )
+        severity_breakdowns.append(severity)
+
+        # Step 10: Generate explanation + risk factors
         explanation = generate_explanation(clause_text, kb_id, risk_level)
+        risk_factors = generate_risk_factors(
+            clause_text=clause_text,
+            individual_scores=individual_scores,
+            matched_kb_id=kb_id,
+            verification_result=verification.to_dict() if was_downgraded else None,
+        )
+
         classified.append(ClauseResult(
             id=f"c{i+1}_{uuid.uuid4().hex[:6]}",
             text=clause_text,
@@ -127,39 +227,144 @@ def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
             confidence=round(confidence, 3),
             explanation=explanation,
             matched_kb_id=kb_id,
+            severity=severity.to_dict(),
+            risk_factors=risk_factors,
+            ensemble_scores=individual_scores,
+            confidence_stability=stability_label,
+            stability_score=round(stability_score, 3),
+            context_verified=was_downgraded,
+            verification_note=verification.verification_reason if was_downgraded else None,
         ))
 
-    # 5 – Detect trap chains (on original clause strings)
+    # ── Step 6: Rule engine (cross-clause) ────────────────────────────────
+    raw_clauses_for_rules = [c.text for c in classified]
+    rule_results = evaluate_rules(raw_clauses_for_rules, contract_type)
+
+    # Enrich clause risk factors with applicable rule results
+    for rule in rule_results:
+        for clause_idx in rule.matched_clauses:
+            if clause_idx < len(classified):
+                clause = classified[clause_idx]
+                if clause.risk_factors is None:
+                    clause.risk_factors = []
+                clause.risk_factors.append({
+                    "source": "Rule Engine",
+                    "reason": f"Rule '{rule.rule_name}': {rule.explanation}",
+                    "evidence": rule.rule_id,
+                    "confidence": 0.90,
+                })
+
+    rule_alerts = [
+        RuleAlert(
+            rule_id=r.rule_id,
+            rule_name=r.rule_name,
+            severity=r.severity,
+            matched_clauses=r.matched_clauses,
+            explanation=r.explanation,
+            risk_tags=r.risk_tags,
+        )
+        for r in rule_results
+    ]
+
+    # ── Step 8: Detect trap chains (graph-based) ──────────────────────────
     raw_clauses_for_trap = [c.text for c in classified]
-    trap_chain_dicts = detect_trap_chains(raw_clauses_for_trap)
+    trap_chain_dicts = detect_trap_chains(raw_clauses_for_trap, contract_type)
     trap_chains = [TrapChainResult(**t) for t in trap_chain_dicts]
 
-    # 6 – Compute overall score
-    clause_dicts = [{"risk_level": c.risk_level, "confidence": c.confidence} for c in classified]
-    score, label, colour = compute_risk_score(clause_dicts, trap_chain_dicts)
+    # ── Step 8b: RISK ESCALATION — eliminate contradictions ───────────────
+    #   If a clause is caught inside a trap chain or rule engine alert but
+    #   is individually classified as "safe", escalate it to at least
+    #   "warning" so the user never sees green badges inside danger sections.
+    escalated_indices = set()
+
+    # Collect clause indices caught in trap chains
+    for tc in trap_chain_dicts:
+        for idx in tc.get("matched_clauses", []):
+            escalated_indices.add(idx)
+
+    # Collect clause indices caught in rule engine alerts
+    for rule in rule_results:
+        for idx in rule.matched_clauses:
+            escalated_indices.add(idx)
+
+    # Escalate and re-sync severity + explanation
+    for idx in escalated_indices:
+        if idx < len(classified):
+            clause = classified[idx]
+            if clause.risk_level == "safe":
+                clause.risk_level = "warning"
+                # Re-run severity with the corrected risk level
+                new_severity = analyze_severity(
+                    clause_text=clause.text,
+                    risk_level="warning",
+                    matched_kb_id=clause.matched_kb_id,
+                    contract_type=contract_type,
+                )
+                clause.severity = new_severity.to_dict()
+                severity_breakdowns[idx] = new_severity
+                # Re-generate explanation with the corrected risk level
+                clause.explanation = generate_explanation(
+                    clause.text, clause.matched_kb_id, "warning"
+                )
+
+    # ── Step 9: Compute overall risk score ────────────────────────────────
+    clause_dicts = [{"risk": c.risk_level, "confidence": c.confidence} for c in classified]
+    rule_dicts = [
+        {"severity": r.severity, "rule_id": r.rule_id}
+        for r in rule_results
+    ]
+    score_result = compute_risk_score(
+        results=clause_dicts,
+        rule_engine_results=rule_dicts,
+        trap_chains=trap_chain_dicts,
+        contract_type=contract_type,
+        verification_downgrades=verification_downgrades,
+    )
 
     high_risk = sum(1 for c in classified if c.risk_level == "high-risk")
     warning   = sum(1 for c in classified if c.risk_level == "warning")
     safe      = sum(1 for c in classified if c.risk_level == "safe")
 
+    # Aggregate severity across all clauses
+    severity_summary = aggregate_severity(severity_breakdowns)
+
     return AnalysisResponse(
         filename=filename,
-        overall_score=score,
-        risk_label=label,
-        risk_colour=colour,
+        overall_score=score_result["overall_score"],
+        risk_label=score_result["risk_label"],
+        risk_colour=score_result["risk_colour"],
         total_clauses=len(classified),
         high_risk_count=high_risk,
         warning_count=warning,
         safe_count=safe,
         trap_chains=trap_chains,
         clauses=classified,
+        # New Decision Intelligence Layer fields
+        contract_type=contract_type,
+        contract_type_confidence=round(type_confidence, 3),
+        severity_summary=severity_summary,
+        rule_engine_alerts=rule_alerts,
+        ensemble_method="weighted_vote",
+        score_breakdown=score_result,
+        manual_review_clauses=manual_review_count,
     )
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @app.get("/")
 def health_check():
-    return {"status": "ok", "service": "LegalEase AI Backend v1.0.0"}
+    return {
+        "status": "ok",
+        "service": "LegalEase AI — Hybrid Legal Intelligence Engine v2.0.0",
+        "decision_intelligence": {
+            "rule_engine": True,
+            "trap_chain_v2": True,
+            "confidence_calibration": True,
+            "context_verification": True,
+            "severity_prediction": True,
+            "ensemble_classification": True,
+        },
+    }
 
 
 @app.post("/api/analyze", response_model=AnalysisResponse)
@@ -189,89 +394,107 @@ def analyze_text(body: TextRequest):
     return _run_pipeline(body.text, body.filename or "contract.txt")
 
 
-# ── Chat endpoint ─────────────────────────────────────────────────────────────
+# ── Chat endpoint (Mistral — General Legal Assistant) ─────────────────────────
 
-@app.post("/api/chat", response_model=ChatResponse)
-def chat_with_contract(body: ChatRequest):
-    """Ask Gemini anything about the uploaded contract."""
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+class GeneralChatMessage(BaseModel):
+    role: str   # "user" | "assistant"
+    content: str
+
+class GeneralChatRequest(BaseModel):
+    history: List[GeneralChatMessage]  # previous turns
+    message: str                        # new user message
+
+class GeneralChatResponse(BaseModel):
+    reply: str
+    error: Optional[str] = None
+
+
+@app.post("/api/chat", response_model=GeneralChatResponse)
+def general_legal_chat(body: GeneralChatRequest):
+    """
+    General legal opinion chatbot powered by Mistral AI.
+    This is NOT for contract analysis — it answers general legal questions.
+    """
+    api_key = os.getenv("MISTRAL_API_KEY", "").strip()
     if not api_key:
-        return ChatResponse(
-            reply="The Gemini API key is not configured. Please add GEMINI_API_KEY to your .env file.",
+        return GeneralChatResponse(
+            reply="The Mistral API key is not configured. Please add MISTRAL_API_KEY to your .env file.",
             error="no_api_key"
         )
 
     try:
-        client = _get_genai_client()
-        if client is None:
-            return ChatResponse(
-                reply="The Gemini API key is not configured. Please add GEMINI_API_KEY to your .env file.",
-                error="no_api_key",
-            )
+        import urllib.request
+        import json as json_lib
 
         system_prompt = (
-            f"You are LegalEase AI, an expert legal assistant. "
-            f"The user has uploaded a contract named '{body.contract_filename}'. "
-            f"You have full access to the contract text below. "
-            f"Answer the user's questions in plain English, be concise, and highlight any risks. "
-            f"Do not make up clauses that do not exist in the contract.\n\n"
-            f"=== CONTRACT TEXT ===\n{body.contract_text[:8000]}\n=== END CONTRACT ==="
+            "You are LegalEase AI, a helpful legal knowledge assistant. "
+            "You provide general legal opinions, explain legal concepts in simple English, "
+            "and help users understand common contract terms and risks. "
+            "IMPORTANT: You are NOT analyzing any specific contract. You are a general legal advisor. "
+            "Always include a disclaimer that your advice is for educational purposes only "
+            "and users should consult a licensed attorney for specific legal matters. "
+            "Keep responses concise (3-5 sentences max), friendly, and easy to understand."
         )
 
-        model_name = os.getenv("GEMINI_MODEL", "").strip() or "gemini-2.0-flash"
+        model_name = os.getenv("MISTRAL_MODEL", "").strip() or "mistral-small-latest"
 
-        from google.genai import types
-
-        # Build history in google-genai format
-        contents = []
+        # Build messages array
+        messages = [{"role": "system", "content": system_prompt}]
         for msg in body.history:
-            role = msg.role if msg.role in ("user", "model") else "user"
-            contents.append(
-                types.Content(role=role, parts=[types.Part.from_text(text=msg.content)])
-            )
-        contents.append(
-            types.Content(role="user", parts=[types.Part.from_text(text=body.message)])
+            role = msg.role if msg.role in ("user", "assistant") else "user"
+            messages.append({"role": role, "content": msg.content})
+        messages.append({"role": "user", "content": body.message})
+
+        # Direct HTTP request to Mistral API (no SDK needed)
+        payload = json_lib.dumps({
+            "model": model_name,
+            "messages": messages,
+            "temperature": 0.4,
+            "max_tokens": 500,
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            "https://api.mistral.ai/v1/chat/completions",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            method="POST",
         )
 
-        response = client.models.generate_content(
-            model=model_name,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=0.3,
-                max_output_tokens=450,
-            ),
-        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json_lib.loads(resp.read().decode("utf-8"))
 
-        reply = (response.text or "").strip()
+        reply = result["choices"][0]["message"]["content"].strip()
         if not reply:
             reply = "Sorry — I didn't get a response back. Please try again."
-        return ChatResponse(reply=reply)
+        return GeneralChatResponse(reply=reply)
 
+    except urllib.error.HTTPError as he:
+        error_body = he.read().decode("utf-8", errors="replace")
+        print(f"[LegalEase] ❌ Mistral HTTP {he.code}: {error_body[:300]}")
+        if he.code == 401:
+            return GeneralChatResponse(
+                reply="Mistral API key is invalid. Please check your MISTRAL_API_KEY in the .env file.",
+                error=f"HTTP 401: {error_body[:200]}",
+            )
+        if he.code == 429:
+            return GeneralChatResponse(
+                reply="Mistral rate limit exceeded. Please wait a moment and try again.",
+                error=f"HTTP 429: {error_body[:200]}",
+            )
+        return GeneralChatResponse(
+            reply=f"Mistral API error ({he.code}). Please try again.",
+            error=f"HTTP {he.code}: {error_body[:200]}",
+        )
     except Exception as e:
-        msg = str(e)
-        low = msg.lower()
-        if "403" in low and ("denied access" in low or "permission" in low):
-            return ChatResponse(
-                reply=(
-                    "Gemini rejected the request (403). "
-                    "This usually means the API key's project does not have Gemini API access enabled "
-                    "or billing/permissions are not set up."
-                ),
-                error=msg,
-            )
-        if "429" in low or "resource_exhausted" in low or "quota" in low:
-            return ChatResponse(
-                reply=(
-                    "Gemini rate-limit/quota was exceeded (429). "
-                    "This API key's project appears to have zero free-tier quota enabled, "
-                    "so you may need to enable billing/upgrade your plan or adjust your quota settings."
-                ),
-                error=msg,
-            )
-        return ChatResponse(
-            reply="Sorry, I couldn't process that question. Please try again.",
-            error=msg
+        import traceback
+        traceback.print_exc()
+        print(f"[LegalEase] ❌ Chat error: {e}")
+        return GeneralChatResponse(
+            reply=f"Sorry, I couldn't process that question. Error: {str(e)[:200]}",
+            error=str(e),
         )
 
 
@@ -280,3 +503,4 @@ def chat_with_contract(body: ChatRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+

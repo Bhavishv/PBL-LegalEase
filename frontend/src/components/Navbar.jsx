@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 const AUTH_PAGES = ["/signin", "/signup"];
 
 // Pages that belong to authenticated users
-const APP_PAGES = ["/dashboard", "/analysis", "/version-compare", "/crowd-intel", "/vault"];
+const APP_PAGES = ["/dashboard", "/analysis", "/version-compare", "/vault"];
 
 function Navbar() {
   const location = useLocation();
@@ -64,7 +64,6 @@ function Navbar() {
               <>  
                 <NavLink to="/dashboard"      label="Dashboard"    current={location.pathname} />
                 <NavLink to="/vault"          label="Contract Vault" current={location.pathname} />
-                <NavLink to="/crowd-intel"    label="Crowd Intel"  current={location.pathname} />
 
                 <span className="text-slate-300 mx-1 hidden sm:inline">|</span>
 

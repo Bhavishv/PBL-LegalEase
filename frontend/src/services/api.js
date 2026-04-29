@@ -39,29 +39,14 @@ export const analyzeText = async (text, filename = "contract.txt") => {
 };
 
 /**
- * Ask a question about the analyzed contract using the backend chat endpoint.
- * `history` should use UI roles: "user" | "assistant".
+ * Send a general legal question to the Mistral-powered chatbot.
+ * This is NOT contract-specific — it answers general legal opinions.
  */
-export const chatWithContract = async ({
-  contractText,
-  contractFilename,
-  history = [],
-  message,
-}) => {
-  const normalizedHistory = history.map((entry) => ({
-    role: entry.role === "assistant" ? "model" : "user",
-    content: entry.content,
-  }));
-
+export const sendChatMessage = async ({ history = [], message }) => {
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contract_text: contractText,
-      contract_filename: contractFilename,
-      history: normalizedHistory,
-      message,
-    }),
+    body: JSON.stringify({ history, message }),
   });
 
   if (!response.ok) {

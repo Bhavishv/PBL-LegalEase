@@ -1,12 +1,12 @@
 """
-train_model.py — Train a TF-IDF + Logistic Regression clause-risk classifier
-                 on the CUAD (Contract Understanding Atticus Dataset).
+train_model.py — Train an embedding-based + Logistic Regression clause-risk
+                 classifier on the CUAD (Contract Understanding Atticus Dataset).
 
 Run once (takes ~2–5 minutes on first run to download dataset):
     python train_model.py
 
 Output:
-    backend/models/cuad_classifier.joblib   ← trained sklearn pipeline
+    backend/models/cuad_classifier.joblib   ← trained model artifact
     backend/models/label_encoder.joblib     ← LabelEncoder for class names
 
 The saved model is consumed by risk_classifier.py at runtime.
@@ -201,44 +201,52 @@ def balance_classes(texts: list[str], labels: list[str], max_per_class: int = 50
 
 def train(texts: list[str], labels: list[str]):
     """
-    Train a TF-IDF (1–3 gram) + Logistic Regression pipeline.
-    Returns the fitted pipeline and label encoder.
+    Train Sentence-BERT embeddings + Logistic Regression.
+    Returns a model artifact dict and label encoder.
     """
-    from sklearn.pipeline import Pipeline
-    from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.linear_model import LogisticRegression
     from sklearn.preprocessing import LabelEncoder
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import classification_report
+    from sentence_transformers import SentenceTransformer
 
-    print("\n🔧 Training TF-IDF + Logistic Regression pipeline…")
+    print("\n🔧 Training Sentence-BERT embeddings + Logistic Regression…")
 
     le = LabelEncoder()
     y  = le.fit_transform(labels)
 
-    X_train, X_test, y_train, y_test = train_test_split(
+    X_train_texts, X_test_texts, y_train, y_test = train_test_split(
         texts, y, test_size=0.20, random_state=42, stratify=y
     )
-    print(f"   Train: {len(X_train):,}  |  Test: {len(X_test):,}")
+    print(f"   Train: {len(X_train_texts):,}  |  Test: {len(X_test_texts):,}")
     print(f"   Classes: {list(le.classes_)}")
 
-    clf = Pipeline([
-        ("tfidf", TfidfVectorizer(
-            ngram_range=(1, 3),
-            max_features=60_000,
-            sublinear_tf=True,
-            stop_words="english",
-            min_df=2,
-        )),
-        ("lr", LogisticRegression(
-            max_iter=1000,
-            C=5.0,
-            solver="lbfgs",
-            multi_class="multinomial",
-            class_weight="balanced",
-            n_jobs=-1,
-        )),
-    ])
+    model_name = "all-MiniLM-L6-v2"
+    print(f"   Embedding model: {model_name}")
+    encoder = SentenceTransformer(model_name)
+
+    print("   Encoding train split…")
+    X_train = encoder.encode(
+        X_train_texts,
+        convert_to_numpy=True,
+        normalize_embeddings=True,
+        show_progress_bar=True,
+    )
+    print("   Encoding test split…")
+    X_test = encoder.encode(
+        X_test_texts,
+        convert_to_numpy=True,
+        normalize_embeddings=True,
+        show_progress_bar=True,
+    )
+
+    clf = LogisticRegression(
+        max_iter=1500,
+        C=5.0,
+        solver="lbfgs",
+        class_weight="balanced",
+        n_jobs=-1,
+    )
 
     clf.fit(X_train, y_train)
 
@@ -250,7 +258,12 @@ def train(texts: list[str], labels: list[str]):
     acc = (y_pred == y_test).mean()
     print(f"   Overall accuracy: {acc:.1%}")
 
-    return clf, le
+    model_artifact = {
+        "model_type": "sbert_lr",
+        "encoder_model_name": model_name,
+        "classifier": clf,
+    }
+    return model_artifact, le
 
 
 # ══════════════════════════════════════════════════════════════════════════════
