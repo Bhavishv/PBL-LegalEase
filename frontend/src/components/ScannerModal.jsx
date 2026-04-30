@@ -5,15 +5,16 @@ const ScannerModal = ({ isOpen, onClose, onScanComplete }) => {
   const [sessionId, setSessionId] = useState(null);
   const [status, setStatus] = useState('generating');
   const [qrUrl, setQrUrl] = useState('');
-
   const [imageCount, setImageCount] = useState(0);
+
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
   // 1. Generate session ID on mount
   useEffect(() => {
     if (isOpen) {
       const initSession = async () => {
         try {
-          const response = await fetch('/api/scan/session', {
+          const response = await fetch(`${API_URL}/api/scan/session`, {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
@@ -37,7 +38,7 @@ const ScannerModal = ({ isOpen, onClose, onScanComplete }) => {
       
       initSession();
     }
-  }, [isOpen]);
+  }, [isOpen, API_URL]);
 
   // 2. Poll for status while modal is open and status is pending
   useEffect(() => {
@@ -45,7 +46,7 @@ const ScannerModal = ({ isOpen, onClose, onScanComplete }) => {
     if (isOpen && sessionId && status === 'pending') {
       interval = setInterval(async () => {
         try {
-          const res = await fetch(`/api/scan/status/${sessionId}`);
+          const res = await fetch(`${API_URL}/api/scan/status/${sessionId}`);
           if (res.ok) {
             const data = await res.json();
             
@@ -72,7 +73,7 @@ const ScannerModal = ({ isOpen, onClose, onScanComplete }) => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isOpen, sessionId, status, onClose, onScanComplete]);
+  }, [isOpen, sessionId, status, onClose, onScanComplete, API_URL]);
 
 
   if (!isOpen) return null;

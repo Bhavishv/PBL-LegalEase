@@ -1,0 +1,11 @@
+END USER LICENSE AGREEMENT (EULA)
+
+1. LICENSE GRANT: The Company grants you a non-exclusive, non-transferable license to use the Software solely for personal use.
+
+2. DATA COLLECTION: By using the Software, you agree that the Company may collect and use technical data and related information, including but not limited to technical information about your device, system and application software, and peripherals, to facilitate the provision of software updates and product support.
+
+3. THIRD-PARTY SHARING: The Company may share anonymized usage data with third-party partners for marketing and advertising purposes.
+
+4. NO WARRANTY: THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. THE COMPANY DISCLAIMS ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+
+5. LIMITATION OF LIABILITY: IN NO EVENT SHALL THE COMPANY BE LIABLE FOR ANY INCIDENTAL, SPECIAL, INDIRECT, OR CONSEQUENTIAL DAMAGES WHATSOEVER ARISING OUT OF OR RELATED TO YOUR USE OF THE SOFTWARE.

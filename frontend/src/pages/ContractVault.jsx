@@ -2,11 +2,15 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 /* ─── storage helpers ─────────────────────────────────────────── */
-const VAULT_KEY = "legalease_vault";
+const getVaultKey = () => {
+  const userInfo = JSON.parse(localStorage.getItem("userInfo") || "{}");
+  return userInfo.id ? `legalease_vault_${userInfo.id}` : "legalease_vault_guest";
+};
 
 export function saveContractToVault(analysisData) {
+  const vaultKey = getVaultKey();
   try {
-    const existing = JSON.parse(localStorage.getItem(VAULT_KEY) || "[]");
+    const existing = JSON.parse(localStorage.getItem(vaultKey) || "[]");
     const entry = {
       id:        Date.now().toString(),
       filename:  analysisData.filename ?? "Unknown",
@@ -18,22 +22,23 @@ export function saveContractToVault(analysisData) {
       analyzedAt: new Date().toISOString(),
       data:      analysisData,             // full result for re-view
     };
-    // De-duplicate by filename: keep only the latest run for same file
     const deduped = existing.filter(e => e.filename !== entry.filename);
-    const updated = [entry, ...deduped].slice(0, 50); // keep last 50
-    localStorage.setItem(VAULT_KEY, JSON.stringify(updated));
+    const updated = [entry, ...deduped].slice(0, 50); 
+    localStorage.setItem(vaultKey, JSON.stringify(updated));
     return entry.id;
   } catch (_) {}
 }
 
 export function loadVault() {
-  try { return JSON.parse(localStorage.getItem(VAULT_KEY) || "[]"); }
+  const vaultKey = getVaultKey();
+  try { return JSON.parse(localStorage.getItem(vaultKey) || "[]"); }
   catch (_) { return []; }
 }
 
 export function deleteFromVault(id) {
+  const vaultKey = getVaultKey();
   const updated = loadVault().filter(e => e.id !== id);
-  localStorage.setItem(VAULT_KEY, JSON.stringify(updated));
+  localStorage.setItem(vaultKey, JSON.stringify(updated));
 }
 
 /* ─── risk helpers ─────────────────────────────────────────────── */

@@ -18,7 +18,7 @@ import Preloader from "./components/Preloader";
 
 function App() {
   return (
-    <GoogleOAuthProvider clientId="1234567890-example.apps.googleusercontent.com">
+    <GoogleOAuthProvider clientId="870057454239-mkcfl5h6guh3a17e63ss43cchr1hm2em.apps.googleusercontent.com">
       <Preloader />
       <BrowserRouter>
         <Routes>

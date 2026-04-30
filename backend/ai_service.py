@@ -61,12 +61,12 @@ def ask_ai(prompt: str, json_mode: bool = False) -> Optional[str]:
             payload = {
                 "model": MISTRAL_MODEL,
                 "messages": [
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": system_prompt + " Do NOT use markdown bolding (like **word**). Keep explanations under 3 sentences."},
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.1
             }
-            response = requests.post(url, headers=headers, json=payload, timeout=15)
+            response = requests.post(url, headers=headers, json=payload, timeout=35)
             if response.ok:
                 return response.json()['choices'][0]['message']['content'].strip()
         except Exception as e:

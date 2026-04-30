@@ -86,12 +86,14 @@ const MobileScannerPage = () => {
   const uploadImage = async (fileOrBlob, filename) => {
     setStatus('uploading');
 
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
     const formData = new FormData();
     formData.append('sessionId', sessionId);
     formData.append('image', fileOrBlob, filename);
 
     try {
-      const response = await fetch('/api/scan/upload', {
+      const response = await fetch(`${API_URL}/api/scan/upload`, {
         method: 'POST',
         headers: { 'ngrok-skip-browser-warning': 'true' },
         body: formData,
@@ -116,8 +118,9 @@ const MobileScannerPage = () => {
   // Mark session as finished
   const finishSession = async () => {
     setStatus('uploading');
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
     try {
-      const response = await fetch(`/api/scan/finish/${sessionId}`, {
+      const response = await fetch(`${API_URL}/api/scan/finish/${sessionId}`, {
         method: 'POST',
         headers: { 'ngrok-skip-browser-warning': 'true' },
       });

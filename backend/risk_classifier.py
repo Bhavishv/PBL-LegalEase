@@ -51,12 +51,40 @@ _cuad_clf, _cuad_le = _load_cuad_model()
 
 
 def _cuad_classify(clause_text: str) -> Tuple[str, float, str]:
-    """Classify using the CUAD-trained Logistic Regression model."""
-    proba = _cuad_clf.predict_proba([clause_text])[0]
-    top_idx = int(proba.argmax())
-    risk = _cuad_le.inverse_transform([top_idx])[0]
-    confidence = float(proba[top_idx])
-    return risk, confidence, "cuad_model"
+    """Classify using the CUAD-trained model (Logistic Regression or LinearSVC)."""
+    try:
+        # We try predict_proba first. Note: scikit-learn Pipelines might have the attribute 
+        # but raise AttributeError when called if the final estimator doesn't support it.
+        try:
+            proba = _cuad_clf.predict_proba([clause_text])[0]
+            top_idx = int(proba.argmax())
+            risk = _cuad_le.inverse_transform([top_idx])[0]
+            confidence = float(proba[top_idx])
+        except (AttributeError, NotImplementedError):
+            # Fallback for models without predict_proba (like LinearSVC)
+            decision = _cuad_clf.decision_function([clause_text])[0]
+            
+            import numpy as np
+            # If binary classification, decision is a single value, not an array
+            if np.ndim(decision) == 0 or len(decision.shape) == 1 and _cuad_le.classes_.shape[0] == 2:
+                # Binary case: convert single score to 2-class proba
+                # Ensure decision is at least 1D
+                d = decision if np.ndim(decision) > 0 else np.array([decision])
+                s = 1 / (1 + np.exp(-d)) # Sigmoid
+                proba = np.array([1-s[0], s[0]])
+            else:
+                # Multi-class case
+                exp_scores = np.exp(decision - np.max(decision))
+                proba = exp_scores / exp_scores.sum()
+                
+            top_idx = int(proba.argmax())
+            risk = _cuad_le.inverse_transform([top_idx])[0]
+            confidence = float(proba[top_idx])
+            
+        return risk, confidence, "cuad_model"
+    except Exception as e:
+        print(f"[LegalEase] ML classification failed: {e}")
+        return "safe", 0.0, "none"
 
 
 # ══════════════════════════════════════════════════════════════════════════════

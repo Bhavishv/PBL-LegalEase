@@ -40,6 +40,14 @@ app.add_middleware(
 
 # ── Models ──────────────────────────────────────────────────────────────────
 
+class ChatRequest(BaseModel):
+    contract_text: str
+    query: str
+    history: List[Dict[str, str]] = []
+
+class ChatResponse(BaseModel):
+    reply: str
+
 class ClauseResult(BaseModel):
     id: str
     text: str
@@ -172,7 +180,11 @@ async def _run_pipeline_async(raw_text: str, filename: str) -> AnalysisResponse:
         )
 
     classified_tasks = [process_clause_ai(c) for c in classified_pre]
-    classified = await asyncio.gather(*classified_tasks)
+    results_clauses = await asyncio.gather(*classified_tasks, return_exceptions=True)
+    classified = [res for res in results_clauses if not isinstance(res, Exception)]
+
+    if not classified:
+        raise HTTPException(status_code=500, detail="Analysis failed to process any clauses.")
 
     # ─── PARALLEL EXTRACTIONS ───
     tasks = [
@@ -189,12 +201,25 @@ async def _run_pipeline_async(raw_text: str, filename: str) -> AnalysisResponse:
     entities = results[0] if not isinstance(results[0], Exception) else {}
     financials = results[1] if not isinstance(results[1], Exception) else {}
     compliance = results[2] if not isinstance(results[2], Exception) else {}
-    deadlines_raw = results[3] if not isinstance(results[3], Exception) else []
-    juris_raw = results[4] if not isinstance(results[4], Exception) else {"location": "India", "is_favorable": True, "description": "Subject to Indian Jurisdictional Courts."}
+    deadlines_raw = results[3] if not isinstance(results[3], Exception) and isinstance(results[3], list) else []
+    juris_raw = results[4] if not isinstance(results[4], Exception) and isinstance(results[4], dict) else {}
     playbook = results[5] if not isinstance(results[5], Exception) else "Playbook generation failed."
 
-    deadlines = [DeadlineResult(**d) for d in deadlines_raw]
-    jurisdiction_analysis = JurisdictionResult(**juris_raw)
+    # Robust normalization for Pydantic models
+    deadlines = []
+    for d in deadlines_raw:
+        if isinstance(d, dict):
+            deadlines.append(DeadlineResult(
+                title=str(d.get("title", "Deadline")),
+                date=str(d.get("date", "TBD")),
+                description=str(d.get("description", "Refer to contract text."))
+            ))
+            
+    jurisdiction_analysis = JurisdictionResult(
+        location=str(juris_raw.get("location", "India")),
+        is_favorable=bool(juris_raw.get("is_favorable", True)),
+        description=str(juris_raw.get("description", "Subject to Indian Jurisdictional Courts."))
+    )
 
     trap_chain_dicts = detect_trap_chains([c.text for c in classified])
     trap_chains = [TrapChainResult(**t) for t in trap_chain_dicts]
@@ -203,7 +228,7 @@ async def _run_pipeline_async(raw_text: str, filename: str) -> AnalysisResponse:
     score, label, colour = compute_risk_score(
         clause_dicts, 
         trap_chain_dicts, 
-        ai_context_score=global_risks.get("global_risk_score")
+        ai_context_score=global_risks.get("global_risk_score", 90)
     )
 
     return AnalysisResponse(

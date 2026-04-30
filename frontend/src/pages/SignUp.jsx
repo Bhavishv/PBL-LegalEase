@@ -18,8 +18,9 @@ function SignUp() {
     e.preventDefault();
     setError("");
     setLoading(true);
+    const AUTH_URL = import.meta.env.VITE_AUTH_API_URL || "http://localhost:5000";
     try {
-      const response = await fetch("http://localhost:5000/api/auth/register", {
+      const response = await fetch(`${AUTH_URL}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),

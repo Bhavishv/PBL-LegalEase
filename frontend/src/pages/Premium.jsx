@@ -5,7 +5,7 @@ const PLANS = [
   {
     name: "Starter",
     price: "Free",
-    features: ["5 scans / month", "Basic AI analysis", "Community insights", "Contract Vault"],
+    features: ["5 scans / month", "Basic AI analysis", "ICA/IPC Glossary", "Contract Vault"],
     cta: "Current Plan",
     current: true,
   },
@@ -13,7 +13,7 @@ const PLANS = [
     name: "Professional",
     price: "$19",
     period: "/month",
-    features: ["Unlimited scans", "Priority Gemini 2.5 Analysis", "Multi-language support", "One-click redlining", "Active Deadline Sync"],
+    features: ["Unlimited scans", "AI Negotiation Playbook", "Multi-language support", "One-click E-Sign", "Active Deadline Sync"],
     cta: "Go Pro",
     highlight: true,
   },
@@ -21,7 +21,7 @@ const PLANS = [
     name: "Enterprise",
     price: "$99",
     period: "/month",
-    features: ["Team collaboration", "Custom Playbooks", "API Access", "SSO & Security", "Dedicated Support"],
+    features: ["Team collaboration", "Custom Risk Models", "API Access", "Legal Intelligence Dashboard", "Dedicated Support"],
     cta: "Contact Sales",
   },
 ];
@@ -47,7 +47,7 @@ function Premium() {
       <div className="text-center mb-16">
         <h1 className="text-5xl font-black text-slate-900 mb-4 tracking-tight">Upgrade your Legal <span className="text-blue-600">Power</span></h1>
         <p className="text-slate-500 font-bold text-xl max-w-2xl mx-auto">
-          Get unlimited scans, priority Gemini 2.5 Flash analysis, and advanced strategic insights.
+          Get unlimited scans,LegalEase AI features, and advanced strategic insights.
         </p>
       </div>
 

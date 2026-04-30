@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Toast from "./Toast";
 import ScannerModal from "./ScannerModal";
-import { uploadContract } from "../services/api";
+import { uploadContract, saveAnalysis } from "../services/api";
 import { saveContractToVault } from "../pages/ContractVault";
 
 const ACCEPTED_TYPES = ".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt";
@@ -132,6 +132,17 @@ function UploadContract() {
 
     try {
       const result = await uploadContract(file);
+      
+      // Save to cloud (MongoDB) for dashboard stats/recent - only if logged in
+      const userInfo = JSON.parse(localStorage.getItem("userInfo") || "{}");
+      if (userInfo.token) {
+        try {
+          await saveAnalysis(result);
+        } catch (saveErr) {
+          console.error("Cloud save failed, but local analysis continues:", saveErr);
+        }
+      }
+      
       clearInterval(interval);
       setUploadProgress(100);
       setUploadStatusText("Analysis complete!");
@@ -214,21 +225,90 @@ function UploadContract() {
     }
   };
 
-  const handleDriveImport = (e) => {
-    e.stopPropagation();
+  // ── Real Google Drive Picker Implementation ────────────────────────────────
+
+  const handleDriveImport = () => {
+    const CLIENT_ID = "870057454239-mkcfl5h6guh3a17e63ss43cchr1hm2em.apps.googleusercontent.com";
+    const API_KEY = "AIzaSyDw6jzfMRGcULmvkqYE718noRZ7CBJK5mk"; // Using the provided key
+    const SCOPES = "https://www.googleapis.com/auth/drive.readonly";
+
     setIsDriveSyncing(true);
-    showToast("Authenticating with Google Drive...", "info");
-    
-    // Simulate Drive OAuth & File Picking
-    setTimeout(() => {
-      showToast("Syncing contract from Drive...", "info");
-      setTimeout(() => {
-         const mockFile = new File(["mock content"], "NDA_GoogleDrive_Sync.pdf", { type: "application/pdf" });
-         handleFileSelect(mockFile);
-         setIsDriveSyncing(false);
-         showToast("Successfully imported from Google Drive", "success");
-      }, 1500);
-    }, 1500);
+    showToast("Opening Google Drive...", "info");
+
+    // Helper to load Google Scripts
+    const loadScript = (url) => new Promise((res) => {
+      const script = document.createElement("script");
+      script.src = url;
+      script.onload = res;
+      document.head.appendChild(script);
+    });
+
+    const initializePicker = async () => {
+      try {
+        // 1. Load GAPI and GIS
+        await Promise.all([
+          loadScript("https://apis.google.com/js/api.js"),
+          loadScript("https://accounts.google.com/gsi/client")
+        ]);
+
+        // 2. Request Token from User
+        const tokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          callback: async (response) => {
+            if (response.error) {
+              setIsDriveSyncing(false);
+              showToast("Permission denied.", "error");
+              return;
+            }
+            createPicker(response.access_token);
+          },
+        });
+
+        tokenClient.requestAccessToken();
+
+      } catch (err) {
+        console.error("Drive Init Error:", err);
+        setIsDriveSyncing(false);
+        showToast("Failed to initialize Google Drive.", "error");
+      }
+    };
+
+    const createPicker = (accessToken) => {
+      window.gapi.load('picker', () => {
+        const picker = new window.google.picker.PickerBuilder()
+          .addView(window.google.picker.ViewId.DOCS)
+          .setOAuthToken(accessToken)
+          .setDeveloperKey(API_KEY)
+          .setCallback(async (data) => {
+            if (data.action === window.google.picker.Action.PICKED) {
+              const file = data.docs[0];
+              const fileId = file.id;
+              
+              showToast(`Downloading ${file.name}...`, "info");
+              
+              // Fetch file content using the access token
+              try {
+                const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+                  headers: { Authorization: `Bearer ${accessToken}` }
+                });
+                const blob = await res.blob();
+                const pickedFile = new File([blob], file.name, { type: blob.type });
+                handleFileSelect(pickedFile);
+              } catch (e) {
+                showToast("Failed to download file.", "error");
+              }
+            }
+            if (data.action === window.google.picker.Action.CANCEL || data.action === window.google.picker.Action.PICKED) {
+              setIsDriveSyncing(false);
+            }
+          })
+          .build();
+        picker.setVisible(true);
+      });
+    };
+
+    initializePicker();
   };
 
   return (

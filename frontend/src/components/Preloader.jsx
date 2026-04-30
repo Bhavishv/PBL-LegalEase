@@ -38,7 +38,7 @@ const Preloader = () => {
         className="absolute inset-0 w-full h-full object-cover opacity-30"
       >
         <source 
-          src="https://assets.mixkit.co/videos/preview/mixkit-abstract-digital-technology-background-render-34509-large.mp4" 
+          src="/images/intro_risksmp_.mp4" 
           type="video/mp4" 
         />
       </video>
@@ -63,10 +63,10 @@ const Preloader = () => {
           <div className="absolute -inset-6 border border-blue-400/20 rounded-[3.5rem] animate-ping opacity-30"></div>
         </div>
 
-        <h1 className="text-5xl font-black text-white tracking-tight mb-3 flex items-center gap-3 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-          Legal<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400">Ease</span> <span className="px-2.5 py-1 bg-blue-600/20 border border-blue-500/50 text-blue-400 text-xs uppercase tracking-[0.2em] rounded-lg align-middle shadow-[0_0_10px_rgba(59,130,246,0.2)]">v2.5</span>
+        <h1 className="text-5xl font-black tracking-tight mb-3 flex items-center gap-3 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
+          <span className="text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">Legal</span><span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400">Ease</span> <span className="px-2.5 py-1 bg-blue-600/20 border border-blue-500/50 text-blue-400 text-xs uppercase tracking-[0.2em] rounded-lg align-middle shadow-[0_0_10px_rgba(59,130,246,0.2)]">v2.5</span>
         </h1>
-        <p className="text-blue-200/60 font-black tracking-[0.4em] uppercase text-xs mb-10 drop-shadow-sm">AI Contract Intelligence</p>
+        <p className="text-blue-100/80 font-black tracking-[0.4em] uppercase text-xs mb-10 drop-shadow-sm">AI Contract Intelligence</p>
 
         {/* Loading Bar */}
         <div className="w-80 h-1.5 bg-slate-800/80 rounded-full overflow-hidden relative backdrop-blur-sm border border-slate-700/50">
