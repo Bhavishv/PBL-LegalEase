@@ -167,6 +167,33 @@ def get_all_supported_types() -> list[str]:
     return list(_TYPE_KEYWORDS.keys())
 
 
+def detect_all_type_scores(text: str) -> Dict[str, float]:
+    """
+    Return percentage scores for ALL contract types.
+
+    Unlike detect_contract_type() which only returns the top match,
+    this returns a dict like: {"rental": 0.65, "saas": 0.20, "loan": 0.10, ...}
+    All values sum to ~1.0 (100%).
+    """
+    lower = text.lower()
+    scores: Dict[str, float] = {}
+
+    for contract_type, keywords in _TYPE_KEYWORDS.items():
+        type_score = 0.0
+        for pattern, weight in keywords:
+            matches = len(re.findall(pattern, lower))
+            if matches > 0:
+                type_score += weight + (matches - 1) * weight * 0.3
+        scores[contract_type] = type_score
+
+    total = sum(scores.values())
+    if total == 0:
+        return {k: 0.0 for k in _TYPE_KEYWORDS}
+
+    # Normalize to percentages
+    return {k: round(v / total, 3) for k, v in scores.items()}
+
+
 if __name__ == "__main__":
     # Quick self-test
     samples = {

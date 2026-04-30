@@ -253,6 +253,46 @@ function Analysis() {
         </div>
       </div>
 
+      {/* ── Executive Summary (Mistral AI) ─────────────────────── */}
+      {data.contract_summary && (
+        <div className={`mb-8 p-5 rounded-2xl border-2 shadow-sm ${
+          score >= 85 && counts.high === 0
+            ? "bg-emerald-50 border-emerald-200"
+            : score >= 60
+              ? "bg-amber-50 border-amber-200"
+              : "bg-rose-50 border-rose-200"
+        }`}>
+          <div className="flex items-start gap-4">
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+              score >= 85 && counts.high === 0
+                ? "bg-emerald-100 text-emerald-600"
+                : score >= 60
+                  ? "bg-amber-100 text-amber-600"
+                  : "bg-rose-100 text-rose-600"
+            }`}>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">Executive Summary</h2>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 border border-blue-200">Mistral AI</span>
+              </div>
+              <p className={`text-base leading-relaxed font-medium ${
+                score >= 85 && counts.high === 0
+                  ? "text-emerald-800"
+                  : score >= 60
+                    ? "text-amber-800"
+                    : "text-rose-800"
+              }`}>
+                {data.contract_summary}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══════════════════════════════════════════════════════════ *
        *  CONTRACT READER — full document text with read-aloud      *
        * ══════════════════════════════════════════════════════════ */}
@@ -525,7 +565,7 @@ function Analysis() {
         {/* Right — Clause Detail (plain English explanation) */}
         <div className="lg:sticky lg:top-24 self-start">
           {selected ? (
-            <ClauseDetail clause={selected} overallScore={score} highCount={counts.high} trapCount={trapCount} />
+            <ClauseDetail clause={selected} overallScore={score} highCount={counts.high} trapCount={trapCount} typeScores={data.type_scores} />
           ) : (
             <div className="h-64 flex flex-col items-center justify-center text-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-8">
               <svg className="w-10 h-10 text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -559,8 +599,7 @@ function Analysis() {
 }
 
 /* ── Clause Detail Card (Decision Intelligence Enhanced) ────────── */
-function ClauseDetail({ clause, overallScore = 100, highCount = 0, trapCount = 0 }) {
-  const [showEnsemble, setShowEnsemble] = useState(false);
+function ClauseDetail({ clause, overallScore = 100, highCount = 0, trapCount = 0, typeScores = {} }) {
   const meta = riskMeta[clause.risk_level] ?? riskMeta.safe;
   const bgMap = { high: "bg-rose-50 border-rose-200", warning: "bg-amber-50 border-amber-200", safe: "bg-emerald-50 border-emerald-200" };
   const hdMap = { high: "text-rose-800", warning: "text-amber-800", safe: "text-emerald-800" };
@@ -656,45 +695,37 @@ function ClauseDetail({ clause, overallScore = 100, highCount = 0, trapCount = 0
         </div>
       )}
 
-      {/* Risk Factors (Explainable AI) */}
-      {clause.risk_factors?.length > 0 && (
-        <div className="bg-white rounded-xl p-4 border border-slate-200 mb-4">
-          <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Why This Was Flagged</p>
-          <div className="space-y-2">
-            {clause.risk_factors.map((f, i) => (
-              <div key={i} className="flex items-start gap-2 text-sm">
-                <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 mt-0.5 rounded-full bg-indigo-100 text-indigo-700">{f.source}</span>
-                <span className="text-slate-700">{f.reason}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* Ensemble Transparency */}
-      {clause.ensemble_scores && Object.keys(clause.ensemble_scores).length > 0 && (
-        <div className="mb-4">
-          <button onClick={() => setShowEnsemble(!showEnsemble)}
-            className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-1">
-            <svg className={`w-3 h-3 transition-transform ${showEnsemble ? "rotate-90" : ""}`} fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-            </svg>
-            How was this scored?
-          </button>
-          {showEnsemble && (
-            <div className="mt-2 bg-white rounded-xl p-4 border border-slate-200 space-y-2 animate-fade-in">
-              {Object.entries(clause.ensemble_scores).map(([model, info]) => (
-                <div key={model} className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-500 w-20 uppercase">{model}</span>
-                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${info.risk === "high-risk" ? "bg-rose-400" : info.risk === "warning" ? "bg-amber-400" : "bg-emerald-400"}`}
-                         style={{ width: `${Math.max((info.confidence || 0) * 100, 5)}%` }} />
+      {/* Document Category Breakdown */}
+      {typeScores && Object.keys(typeScores).length > 0 && (
+        <div className="bg-white rounded-xl p-4 border border-slate-200 mb-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Document Category</p>
+          <div className="space-y-2">
+            {Object.entries(typeScores)
+              .sort(([, a], [, b]) => b - a)
+              .map(([type, pct]) => {
+                const typeLabels = {
+                  rental: { label: "Rental / Lease", icon: "🏠", color: "bg-blue-500" },
+                  saas: { label: "SaaS / Software", icon: "💻", color: "bg-indigo-500" },
+                  employment: { label: "Employment", icon: "👔", color: "bg-emerald-500" },
+                  loan: { label: "Loan / Finance", icon: "💰", color: "bg-amber-500" },
+                  nda: { label: "NDA / Confidentiality", icon: "🔒", color: "bg-purple-500" },
+                };
+                const info = typeLabels[type] || { label: type, icon: "📄", color: "bg-slate-400" };
+                const percentage = Math.round(pct * 100);
+                return (
+                  <div key={type} className="flex items-center gap-2">
+                    <span className="text-sm w-6">{info.icon}</span>
+                    <span className="text-xs font-bold text-slate-600 w-28 truncate">{info.label}</span>
+                    <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all duration-500 ${info.color}`}
+                           style={{ width: `${Math.max(percentage, 2)}%` }} />
+                    </div>
+                    <span className={`text-xs font-bold w-10 text-right ${percentage >= 40 ? "text-slate-800" : "text-slate-400"}`}>{percentage}%</span>
                   </div>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{info.risk} {Math.round((info.confidence || 0) * 100)}%</span>
-                </div>
-              ))}
-            </div>
-          )}
+                );
+              })}
+          </div>
         </div>
       )}
 

@@ -38,7 +38,7 @@ from risk_classifier import classify_clause_ensemble
 from plain_english import generate_explanation, generate_risk_factors
 from trap_chain_detector import detect_trap_chains
 from risk_scorer import compute_risk_score
-from contract_type_detector import detect_contract_type
+from contract_type_detector import detect_contract_type, detect_all_type_scores
 from rule_engine import evaluate_rules
 from confidence_calibrator import calibrate_prediction
 from context_verifier import verify_clause_context
@@ -133,10 +133,106 @@ class AnalysisResponse(BaseModel):
     ensemble_method: Optional[str] = "weighted_vote"
     score_breakdown: Optional[Dict] = None
     manual_review_clauses: Optional[int] = 0
+    contract_summary: Optional[str] = None  # Mistral AI executive summary
+    type_scores: Optional[Dict[str, float]] = None  # All contract type percentages
 
 class TextRequest(BaseModel):
     text: str
     filename: Optional[str] = "contract.txt"
+
+
+# ── Mistral AI Summary Generator ──────────────────────────────────────────────
+
+def _generate_mistral_summary(
+    contract_text: str,
+    risk_label: str,
+    overall_score: int,
+    high_risk_count: int,
+    warning_count: int,
+    safe_count: int,
+    contract_type: str,
+) -> str:
+    """
+    Generate a concise executive summary of the contract using Mistral AI.
+
+    The prompt includes the pipeline's final score and risk label so the
+    summary is guaranteed to align with the model's prediction.
+    """
+    import urllib.request
+    import json as json_lib
+
+    api_key = os.getenv("MISTRAL_API_KEY", "").strip()
+    if not api_key:
+        return _fallback_summary(risk_label, overall_score, high_risk_count, warning_count, safe_count, contract_type)
+
+    try:
+        prompt = (
+            f"You are a legal contract analyst. Here is a contract (type: {contract_type}).\n\n"
+            f"Our AI analysis scored this contract {overall_score}/100 with a risk level of '{risk_label}'.\n"
+            f"Clause breakdown: {high_risk_count} high-risk, {warning_count} warnings, {safe_count} safe.\n\n"
+            f"Write a 2-3 sentence executive summary of this contract for a non-lawyer.\n"
+            f"CRITICAL: Your summary MUST align with our risk score of {overall_score}/100 ({risk_label}).\n"
+            f"- If the score is below 60, clearly warn the user about the risks.\n"
+            f"- If the score is 60-84, mention it needs careful review.\n"
+            f"- If the score is 85+, say it appears generally fair.\n"
+            f"Do NOT add any headers, bullet points, or formatting — just write plain sentences.\n\n"
+            f"CONTRACT TEXT:\n{contract_text}"
+        )
+
+        model_name = os.getenv("MISTRAL_MODEL", "").strip() or "mistral-small-latest"
+
+        payload = json_lib.dumps({
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.3,
+            "max_tokens": 250,
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            "https://api.mistral.ai/v1/chat/completions",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            method="POST",
+        )
+
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            result = json_lib.loads(resp.read().decode("utf-8"))
+
+        summary = result["choices"][0]["message"]["content"].strip()
+        if summary:
+            return summary
+
+    except Exception as e:
+        print(f"[LegalEase] ⚠️ Mistral summary failed: {e}")
+
+    return _fallback_summary(risk_label, overall_score, high_risk_count, warning_count, safe_count, contract_type)
+
+
+def _fallback_summary(risk_label, overall_score, high_risk_count, warning_count, safe_count, contract_type):
+    """Deterministic fallback if Mistral API is unavailable."""
+    ctype = contract_type if contract_type != "general" else "standard"
+    if overall_score >= 85 and high_risk_count == 0:
+        return (
+            f"This {ctype} contract appears generally fair and well-balanced. "
+            f"All {safe_count} clauses were classified as safe with no significant risks detected."
+        )
+    elif overall_score >= 60:
+        return (
+            f"This {ctype} contract requires careful review before signing. "
+            f"Our analysis found {warning_count} clause{'s' if warning_count != 1 else ''} needing attention "
+            f"and {high_risk_count} high-risk clause{'s' if high_risk_count != 1 else ''}. "
+            f"Overall risk score: {overall_score}/100."
+        )
+    else:
+        return (
+            f"This {ctype} contract carries significant risks and should not be signed without legal review. "
+            f"Our analysis flagged {high_risk_count} high-risk clause{'s' if high_risk_count != 1 else ''} "
+            f"and {warning_count} warning{'s' if warning_count != 1 else ''}. "
+            f"Overall risk score: {overall_score}/100."
+        )
 
 
 # ── Core pipeline function ────────────────────────────────────────────────────
@@ -147,6 +243,9 @@ def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
 
     # ── Step 2: Detect contract type ──────────────────────────────────────
     contract_type, type_confidence = detect_contract_type(raw_text)
+
+    # ── Step 2b: Get all type scores as percentages ─────────────────────
+    type_scores = detect_all_type_scores(raw_text)
 
     # ── Step 3+4+5+7+10: Classify, calibrate, verify, severity, explain ──
     classified: List[ClauseResult] = []
@@ -328,6 +427,17 @@ def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
     # Aggregate severity across all clauses
     severity_summary = aggregate_severity(severity_breakdowns)
 
+    # ── Step 11: Generate Mistral AI Executive Summary ────────────────────
+    contract_summary = _generate_mistral_summary(
+        raw_text[:4000],  # first 4000 chars to keep within token limits
+        score_result["risk_label"],
+        score_result["overall_score"],
+        high_risk,
+        warning,
+        safe,
+        contract_type,
+    )
+
     return AnalysisResponse(
         filename=filename,
         overall_score=score_result["overall_score"],
@@ -347,6 +457,8 @@ def _run_pipeline(raw_text: str, filename: str) -> AnalysisResponse:
         ensemble_method="weighted_vote",
         score_breakdown=score_result,
         manual_review_clauses=manual_review_count,
+        contract_summary=contract_summary,
+        type_scores=type_scores,
     )
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
