@@ -13,7 +13,11 @@ const protect = async (req, res, next) => {
       token = req.headers.authorization.split(' ')[1];
 
       // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (!process.env.JWT_SECRET) {
+        console.error("[AUTH] JWT_SECRET is missing in environment variables!");
+      }
+      
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
       // Get user from the token
       req.user = await User.findById(decoded.id).select('-password');

@@ -1,35 +1,31 @@
 """
-main.py — LegalEase AI Backend Orchestrator.
-Fixed: PDF parsing using PyPDF2 (no more raw PDF code).
+main.py — LegalEase AI Backend Orchestrator (Production Overhaul).
 """
 
 import os
 import uuid
 import asyncio
 import io
+import json
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import PyPDF2  # Added for robust PDF extraction
+import PyPDF2
 
-# Import our custom modules
+# Custom Modules
 from risk_classifier import classify_clause, segment_clauses
 from risk_scorer import compute_risk_score
 from trap_chain_detector import detect_trap_chains
 from plain_english import generate_explanation
 import ai_service
-from ai_service import (
-    analyze_contract_contextually,
-    extract_contract_entities,
-    extract_financial_data,
-    analyze_gdpr_compliance,
-    get_redline_suggestion,
-    get_negotiation_advice,
-    get_chat_response
-)
+import blockchain_service
+import feedback_engine
+from negotiation_socket import manager as socket_manager
+from fastapi import WebSocket, WebSocketDisconnect
 
-app = FastAPI(title="LegalEase AI Backend", version="1.2.0")
+app = FastAPI(title="LegalEase AI Backend", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,13 +36,11 @@ app.add_middleware(
 
 # ── Models ──────────────────────────────────────────────────────────────────
 
-class ChatRequest(BaseModel):
-    contract_text: str
-    query: str
-    history: List[Dict[str, str]] = []
-
-class ChatResponse(BaseModel):
-    reply: str
+class RiskObject(BaseModel):
+    clause_type: str
+    severity: str
+    explanation: str
+    counter_offer: str
 
 class ClauseResult(BaseModel):
     id: str
@@ -64,16 +58,13 @@ class TrapChainResult(BaseModel):
     involved_indices: List[int]
     reason: str
     remedy: str
+    severity_score: float
 
-class DeadlineResult(BaseModel):
-    title: str
-    date: str
-    description: str
-
-class JurisdictionResult(BaseModel):
-    location: str
-    is_favorable: bool
-    description: str
+class DashboardData(BaseModel):
+    health_score: int
+    radar_data: List[int]
+    industry_percentile: int
+    benchmarking: str
 
 class AnalysisResponse(BaseModel):
     filename: str
@@ -86,180 +77,10 @@ class AnalysisResponse(BaseModel):
     safe_count: int
     trap_chains: List[TrapChainResult]
     clauses: List[ClauseResult]
+    dashboard_data: Optional[DashboardData] = None
+    jurisdiction_analysis: Optional[Dict[str, Any]] = None
+    negotiation_letter: Optional[str] = None
     entities: Optional[Dict[str, Any]] = None
-    financial_data: Optional[Dict[str, Any]] = None
-    compliance: Optional[Dict[str, Any]] = None
-    deadlines: List[DeadlineResult] = []
-    jurisdiction_analysis: Optional[JurisdictionResult] = None
-    negotiation_playbook: Optional[str] = None
-    signature_readiness: Optional[Dict[str, Any]] = None
-
-# ── Helper for PDF Extraction ────────────────────────────────────────────────
-
-def extract_pdf_text(file_bytes: bytes) -> str:
-    """Extracts text from PDF bytes using PyPDF2."""
-    try:
-        reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
-        text = ""
-        for page in reader.pages:
-            content = page.extract_text()
-            if content:
-                text += content + "\n"
-        return text.strip()
-    except Exception as e:
-        print(f"[Backend] PDF extraction failed: {e}")
-        return ""
-
-# ── Core parallel pipeline function ──────────────────────────────────────────
-
-async def _run_pipeline_async(raw_text: str, filename: str) -> AnalysisResponse:
-    if not raw_text.strip():
-        raise HTTPException(status_code=400, detail="Document appears to be empty or unreadable.")
-
-    # 1 – Global Contextual Analysis
-    global_risks = analyze_contract_contextually(raw_text)
-    clause_hints = global_risks.get("clause_hints", [])
-
-    # 2 – Segment into clauses
-    clauses_text = segment_clauses(raw_text)
-
-    # 3 & 4 – Classify (ML)
-    classified_pre: List[Dict[str, Any]] = []
-    for i, clause_text in enumerate(clauses_text):
-        if len(clause_text.strip()) < 20: continue
-        risk_level, confidence, kb_id = classify_clause(clause_text)
-        
-        # ── HYBRID OVERRIDE (ML + AI) ──
-        # If statistical model is unsure (< 0.7), use AI hints as the source of truth
-        for hint in (clause_hints or []):
-            snippet = hint.get("text_snippet") or hint.get("text") or hint.get("snippet")
-            if snippet and snippet.lower() in clause_text.lower():
-                # AI Override: If AI is more 'sure' or ML is unsure
-                if hint.get("risk") in ("high", "warning") or confidence < 0.7:
-                    risk_level = hint.get("risk")
-                    confidence = 0.98  # AI-verified
-                    kb_id = f"ai_boost:{hint.get('category', 'risk')}"
-        
-        norm_risk = "high" if risk_level in ("high", "high-risk") else risk_level
-        classified_pre.append({
-            "idx": i,
-            "text": clause_text,
-            "risk_level": norm_risk,
-            "confidence": confidence,
-            "kb_id": kb_id
-        })
-
-    # ─── PARALLEL CLAUSE AI ───
-    loop = asyncio.get_event_loop()
-    
-    async def process_clause_ai(c):
-        explanation_task = loop.run_in_executor(None, generate_explanation, c["text"], c["kb_id"], c["risk_level"])
-        
-        redline = None
-        advice = None
-        
-        if c["risk_level"] in ("warning", "high"):
-            rl_task = loop.run_in_executor(None, get_redline_suggestion, c["text"], c["risk_level"])
-            ad_task = loop.run_in_executor(None, get_negotiation_advice, c["text"], c["risk_level"])
-            res = await asyncio.gather(explanation_task, rl_task, ad_task, return_exceptions=True)
-            explanation = res[0] if not isinstance(res[0], Exception) else "Analysis pending."
-            redline = res[1] if not isinstance(res[1], Exception) else None
-            advice = res[2] if not isinstance(res[2], Exception) else None
-        else:
-            explanation = await explanation_task
-
-        return ClauseResult(
-            id=f"c{c['idx']+1}_{uuid.uuid4().hex[:6]}",
-            text=c["text"],
-            risk_level=c["risk_level"],
-            confidence=round(c["confidence"], 3),
-            explanation=explanation,
-            suggested_redline=redline,
-            negotiation_advice=advice,
-            matched_kb_id=c["kb_id"]
-        )
-
-    classified_tasks = [process_clause_ai(c) for c in classified_pre]
-    results_clauses = await asyncio.gather(*classified_tasks, return_exceptions=True)
-    classified = [res for res in results_clauses if not isinstance(res, Exception)]
-
-    if not classified:
-        raise HTTPException(status_code=500, detail="Analysis failed to process any clauses.")
-
-    # ─── PARALLEL EXTRACTIONS ───
-    tasks = [
-        loop.run_in_executor(None, extract_contract_entities, raw_text),
-        loop.run_in_executor(None, extract_financial_data, raw_text),
-        loop.run_in_executor(None, analyze_gdpr_compliance, raw_text),
-        loop.run_in_executor(None, ai_service.extract_deadlines, raw_text),
-        loop.run_in_executor(None, ai_service.analyze_jurisdiction, raw_text),
-        loop.run_in_executor(None, ai_service.generate_negotiation_playbook, raw_text)
-    ]
-    
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    entities = results[0] if not isinstance(results[0], Exception) else {}
-    financials = results[1] if not isinstance(results[1], Exception) else {}
-    compliance = results[2] if not isinstance(results[2], Exception) else {}
-    deadlines_raw = results[3] if not isinstance(results[3], Exception) and isinstance(results[3], list) else []
-    juris_raw = results[4] if not isinstance(results[4], Exception) and isinstance(results[4], dict) else {}
-    playbook = results[5] if not isinstance(results[5], Exception) else "Playbook generation failed."
-
-    # Robust normalization for Pydantic models
-    deadlines = []
-    for d in deadlines_raw:
-        if isinstance(d, dict):
-            deadlines.append(DeadlineResult(
-                title=str(d.get("title", "Deadline")),
-                date=str(d.get("date", "TBD")),
-                description=str(d.get("description", "Refer to contract text."))
-            ))
-            
-    jurisdiction_analysis = JurisdictionResult(
-        location=str(juris_raw.get("location", "India")),
-        is_favorable=bool(juris_raw.get("is_favorable", True)),
-        description=str(juris_raw.get("description", "Subject to Indian Jurisdictional Courts."))
-    )
-
-    trap_chain_dicts = detect_trap_chains([c.text for c in classified])
-    trap_chains = [TrapChainResult(**t) for t in trap_chain_dicts]
-
-    clause_dicts = [{"risk_level": c.risk_level, "confidence": c.confidence} for c in classified]
-    score, label, colour = compute_risk_score(
-        clause_dicts, 
-        trap_chain_dicts, 
-        ai_context_score=global_risks.get("global_risk_score", 90)
-    )
-
-    return AnalysisResponse(
-        filename=filename,
-        overall_score=score,
-        risk_label=label,
-        risk_colour=colour,
-        total_clauses=len(classified),
-        high_risk_count=sum(1 for c in classified if c.risk_level == "high"),
-        warning_count=sum(1 for c in classified if c.risk_level == "warning"),
-        safe_count=sum(1 for c in classified if c.risk_level == "safe"),
-        trap_chains=trap_chains,
-        clauses=classified,
-        entities=entities,
-        financial_data=financials,
-        compliance=compliance,
-        deadlines=deadlines,
-        jurisdiction_analysis=jurisdiction_analysis,
-        negotiation_playbook=playbook,
-        signature_readiness=_check_signature_readiness(raw_text)
-    )
-
-def _check_signature_readiness(text: str) -> Dict[str, Any]:
-    lower = text.lower()
-    has_sig = "signature" in lower or "signed by" in lower
-    is_signed = "duly signed" in lower
-    return {
-        "has_signature_block": has_sig,
-        "is_signed_detected": is_signed,
-        "status": "Ready to Sign" if not is_signed and has_sig else "Execution Verified" if is_signed else "Draft"
-    }
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
@@ -270,35 +91,125 @@ async def analyze_file(files: List[UploadFile] = File(...)):
     for file in files:
         file_bytes = await file.read()
         ext = file.filename.lower().rsplit(".", 1)[-1]
-        
         if ext == "pdf":
-            text = extract_pdf_text(file_bytes)
+            reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+            text = "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
         elif ext in ("png", "jpg", "jpeg"):
             text = ai_service.extract_text_from_image(file_bytes)
         else:
             text = file_bytes.decode("utf-8", errors="ignore")
-        
-        if text.strip():
-            combined_text.append(text)
+        combined_text.append(text)
     
-    return await _run_pipeline_async("\n".join(combined_text), main_filename)
+    full_text = "\n\n".join(combined_text)
+    
+    # 1. Pipeline execution
+    clauses_text = segment_clauses(full_text)
+    classified = []
+    for i, txt in enumerate(clauses_text):
+        risk, conf, kb_id = classify_clause(txt)
+        expl = generate_explanation(txt, kb_id, risk)
+        
+        redline = None
+        if risk in ("high", "warning"):
+            redline = ai_service.ask_ai(f"Provide a balanced redline for this {risk} clause: {txt}")
 
-class TranslateRequest(BaseModel):
-    text: str
-    target_lang: str
+        classified.append(ClauseResult(
+            id=f"c{i}_{uuid.uuid4().hex[:4]}",
+            text=txt,
+            risk_level=risk,
+            confidence=round(conf, 3),
+            explanation=expl,
+            suggested_redline=redline
+        ))
 
-@app.post("/api/translate")
-async def translate(req: TranslateRequest):
-    from translator import translate_text
-    translated = translate_text(req.text, req.target_lang)
-    if not translated:
-        return {"translated": req.text, "error": "Translation failed"}
-    return {"translated": translated}
+    # 2. Advanced Analysis
+    # Convert to format expected by graph-based detector
+    trap_input = [{"index": i, "text": c.text, "type": c.matched_kb_id or "Clause", "risk_level": c.risk_level} for i, c in enumerate(classified)]
+    trap_chain_dicts = detect_trap_chains(trap_input)
+    trap_chains = [TrapChainResult(**t) for t in trap_chain_dicts]
 
-@app.post("/api/chat", response_model=ChatResponse)
+    # 3. Overall Score & Dashboard
+    score, label, colour = compute_risk_score(
+        [{"risk_level": c.risk_level, "confidence": c.confidence} for c in classified],
+        trap_chain_dicts
+    )
+    
+    dashboard = DashboardData(**ai_service.get_risk_dashboard_data(score, classified))
+    jurisdiction = ai_service.analyze_jurisdiction_enhanced(full_text)
+    
+    # 4. Final Polish
+    entities = ai_service.extract_contract_entities(full_text)
+    letter = ai_service.generate_negotiation_letter(main_filename, [
+        {"clause_type": c.id, "explanation": c.explanation} for c in classified if c.risk_level == "high"
+    ])
+
+    return AnalysisResponse(
+        filename=main_filename,
+        overall_score=score,
+        risk_label=label,
+        risk_colour=colour,
+        total_clauses=len(classified),
+        high_risk_count=sum(1 for c in classified if c.risk_level == "high"),
+        warning_count=sum(1 for c in classified if c.risk_level == "warning"),
+        safe_count=sum(1 for c in classified if c.risk_level == "safe"),
+        trap_chains=trap_chains,
+        clauses=classified,
+        dashboard_data=dashboard,
+        jurisdiction_analysis=jurisdiction,
+        negotiation_letter=letter,
+        entities=entities
+    )
+
+class ChatRequest(BaseModel):
+    contract_id: str
+    contract_text: str
+    query: str
+
+@app.post("/api/chat")
 async def chat(req: ChatRequest):
-    reply = get_chat_response(req.contract_text, req.query, req.history)
-    return ChatResponse(reply=reply)
+    return ai_service.get_chat_response(req.contract_id, req.contract_text, req.query)
+
+class CompareRequest(BaseModel):
+    v1_text: str
+    v2_text: str
+
+@app.post("/api/compare")
+async def compare(req: CompareRequest):
+    return ai_service.compare_contracts(req.v1_text, req.v2_text)
+
+# ── Multi-User Negotiation (WebSockets) ───────────────────────────────────
+
+@app.websocket("/ws/negotiate/{room_id}")
+async def websocket_endpoint(websocket: WebSocket, room_id: str):
+    await socket_manager.connect(room_id, websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            await socket_manager.broadcast(room_id, message, websocket)
+    except WebSocketDisconnect:
+        socket_manager.disconnect(room_id, websocket)
+
+# ── Blockchain & Feedback ──────────────────────────────────────────────────
+
+class NotarizeRequest(BaseModel):
+    contract_text: str
+    signatures: List[str]
+
+@app.post("/api/notarize")
+async def notarize_contract(req: NotarizeRequest):
+    return blockchain_service.notarizer.generate_proof(req.contract_text, req.signatures)
+
+class FeedbackRequest(BaseModel):
+    clause_text: str
+    predicted_risk: str
+    user_correction: Optional[str] = None
+    is_accurate: bool
+
+@app.post("/api/feedback")
+async def save_feedback(req: FeedbackRequest):
+    feedback_engine.log_feedback(req.clause_text, req.predicted_risk, req.user_correction, req.is_accurate)
+    return {"status": "recorded", "stats": feedback_engine.get_retraining_stats()}
 
 if __name__ == "__main__":
     import uvicorn

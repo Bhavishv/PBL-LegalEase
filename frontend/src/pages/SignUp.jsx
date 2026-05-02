@@ -27,7 +27,7 @@ function SignUp() {
       });
       const data = await response.json();
       if (response.ok) {
-        localStorage.setItem("user", JSON.stringify(data));
+        localStorage.setItem("userInfo", JSON.stringify(data));
         navigate("/dashboard");
       } else {
         setError(data.message || "Something went wrong");
@@ -39,16 +39,23 @@ function SignUp() {
     }
   };
 
-  const handleGoogleSuccess = (credentialResponse) => {
-    const decoded = jwtDecode(credentialResponse.credential);
-    const userData = {
-      name: decoded.name,
-      email: decoded.email,
-      picture: decoded.picture,
-      token: credentialResponse.credential
-    };
-    localStorage.setItem("user", JSON.stringify(userData));
-    navigate("/dashboard");
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      const response = await fetch(`/api/auth/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: credentialResponse.credential }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        localStorage.setItem("userInfo", JSON.stringify(data));
+        navigate("/dashboard");
+      } else {
+        setError(data.message || "Google Sign-In failed on server");
+      }
+    } catch (err) {
+      setError("Unable to connect to the authentication server.");
+    }
   };
 
   return (
@@ -195,7 +202,6 @@ function SignUp() {
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={() => setError("Google Sign-Up failed. Please try again.")}
-                useOneTap
                 theme="filled_blue"
                 shape="pill"
                 width="360"

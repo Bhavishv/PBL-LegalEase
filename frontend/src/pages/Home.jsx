@@ -103,7 +103,7 @@ function Home() {
           {[1, 2, 3, 4, 5].map((i) => (
             <div
               key={i}
-              className={`absolute inset-0 bg-cover bg-center transition-opacity duration-1000 ease-in-out ${bgIndex === i ? 'opacity-10' : 'opacity-0'}`}
+              className={`absolute inset-0 bg-cover bg-center transition-opacity duration-1000 ease-in-out ${bgIndex === i ? 'opacity-20' : 'opacity-0'}`}
               style={{ backgroundImage: `url('/images/bg${i}.png')` }}
             />
           ))}
@@ -162,15 +162,7 @@ function Home() {
               ))}
            </div>
            
-           <div className="mt-12 text-center animate-fade-in [animation-delay:500ms]">
-              <p className="text-slate-400 font-black text-xs uppercase tracking-[0.3em] mb-8">Trusted by Modern Teams</p>
-              <div className="flex flex-wrap justify-center gap-12 opacity-40 grayscale filter">
-                 <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Amazon_logo.svg/1024px-Amazon_logo.svg.png" alt="Partner" className="h-6" />
-                 <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Google_2015_logo.svg/1024px-Google_2015_logo.svg.png" alt="Partner" className="h-6" />
-                 <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/01/LinkedIn_Logo.svg/1024px-LinkedIn_Logo.svg.png" alt="Partner" className="h-6" />
-                 <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Slack_Technologies_Logo.svg/1024px-Slack_Technologies_Logo.svg.png" alt="Partner" className="h-6" />
-              </div>
-           </div>
+
         </div>
 
       </div>
@@ -180,15 +172,15 @@ function Home() {
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-30" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
            <div className="text-center mb-20">
-              <h2 className="text-4xl font-black text-white mb-4">Enterprise Grade Intelligence</h2>
-              <p className="text-slate-400 font-bold text-lg">Beyond simple analysis. We provide legal strategic dominance.</p>
+              <h2 className="text-4xl font-black !text-white mb-4">Enterprise Grade Intelligence</h2>
+              <p className="text-slate-300 font-bold text-lg">Beyond simple analysis. We provide legal strategic dominance.</p>
            </div>
            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {FEATURES.slice(4).map((f, i) => (
-                <div key={i} className="p-8 rounded-[2.5rem] bg-white/5 border border-white/10 hover:bg-white/10 transition-all cursor-default">
-                   <div className="text-blue-500 mb-6">{f.icon}</div>
-                   <h4 className="text-xl font-black text-white mb-2">{f.title}</h4>
-                   <p className="text-slate-500 font-medium text-sm leading-relaxed">{f.description}</p>
+                <div key={i} className="p-8 rounded-[2.5rem] bg-white/15 border border-white/30 hover:bg-white/25 transition-all cursor-default shadow-2xl backdrop-blur-sm">
+                   <div className="text-blue-400 mb-6">{f.icon}</div>
+                   <h4 className="text-xl font-black !text-white mb-2">{f.title}</h4>
+                   <p className="text-slate-300 font-medium text-sm leading-relaxed">{f.description}</p>
                 </div>
               ))}
            </div>

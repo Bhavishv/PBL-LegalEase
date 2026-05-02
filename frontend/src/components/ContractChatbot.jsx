@@ -8,25 +8,85 @@ function ContractChatbot() {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const messagesEndRef = useRef(null);
+  const recognitionRef = useRef(null);
+
+  // Initialize Speech Recognition
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = "en-US";
+
+      recognitionRef.current.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setInput(transcript);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+  }, []);
 
   const toggleListening = (e) => {
     e.preventDefault();
-    if (isListening) return;
-    setIsListening(true);
-    setInput("");
-    
-    let text = "What does clause 4 mean?";
-    let currentIndex = 0;
-    
-    const interval = setInterval(() => {
-      setInput(text.substring(0, currentIndex + 1));
-      currentIndex++;
-      if (currentIndex === text.length) {
-        clearInterval(interval);
-        setTimeout(() => setIsListening(false), 500);
+    if (!recognitionRef.current) {
+      alert("Speech recognition is not supported in your browser.");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (err) {
+        console.error("Failed to start recognition:", err);
       }
-    }, 50);
+    }
+  };
+
+  const speak = (text) => {
+    if (!isVoiceEnabled) return;
+    
+    // Stop any current speech
+    window.speechSynthesis.cancel();
+
+    // Correct pronunciation for the Indian Contract Act year
+    let processedText = text.replace(/1872/g, "eighteen seventy-two");
+    
+    // Ensure we have something to say
+    if (processedText.trim() === "eighteen seventy-two") {
+      processedText = "This explanation refers to the Indian Contract Act, eighteen seventy-two.";
+    }
+
+    const utterance = new SpeechSynthesisUtterance(processedText);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    utterance.lang = "en-US";
+    
+    // Get available voices and pick a nice one if possible
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => 
+      (v.name.includes("Google") || v.name.includes("Female") || v.name.includes("Natural")) && 
+      v.lang.startsWith("en")
+    );
+    if (preferredVoice) utterance.voice = preferredVoice;
+
+    window.speechSynthesis.speak(utterance);
   };
 
   const scrollToBottom = () => {
@@ -38,7 +98,7 @@ function ContractChatbot() {
   }, [messages, isTyping]);
 
   const handleSend = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!input.trim()) return;
 
     const userMessage = { id: Date.now(), sender: "user", text: input };
@@ -65,6 +125,9 @@ function ContractChatbot() {
 
       setMessages((prev) => [...prev, { id: Date.now() + 1, sender: "bot", text: botResponse }]);
       setIsTyping(false);
+      
+      // Speak the response
+      speak(botResponse);
     }, 1500 + Math.random() * 1000); // 1.5 - 2.5s delay
   };
 
@@ -102,6 +165,20 @@ function ContractChatbot() {
               <p className="text-xs text-blue-100 font-medium">AI Agent Online</p>
             </div>
           </div>
+          <button 
+            onClick={() => {
+              setIsVoiceEnabled(!isVoiceEnabled);
+              if (isVoiceEnabled) window.speechSynthesis.cancel();
+            }}
+            className={`relative z-10 p-2 rounded-lg transition-all ${isVoiceEnabled ? 'bg-white/20 text-white' : 'text-white/60 hover:text-white'}`}
+            title={isVoiceEnabled ? "Disable Voice Output" : "Enable Voice Output"}
+          >
+            {isVoiceEnabled ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
+            )}
+          </button>
         </div>
 
         {/* Chat Messages Area */}

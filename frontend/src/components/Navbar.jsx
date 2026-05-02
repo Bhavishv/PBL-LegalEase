@@ -15,7 +15,7 @@ function Navbar() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("user");
+    const savedUser = localStorage.getItem("userInfo");
     if (savedUser) {
       const parsedUser = JSON.parse(savedUser);
       setIsLoggedIn(true);
@@ -29,7 +29,7 @@ function Navbar() {
   const isAuthPage = AUTH_PAGES.includes(location.pathname);
   
   const handleSignOut = () => {
-    localStorage.removeItem("user");
+    localStorage.removeItem("userInfo");
     sessionStorage.removeItem("legalease_analysis");
     setIsLoggedIn(false);
     navigate("/signin");
@@ -42,7 +42,7 @@ function Navbar() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link
-              to={isLoggedIn ? "/dashboard" : "/"}
+              to="/"
               className="text-2xl font-black tracking-tighter text-slate-900 flex items-center gap-2 group"
             >
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white scale-90 group-hover:rotate-12 transition-transform">L</div>
@@ -67,7 +67,7 @@ function Navbar() {
 
           {/* Logo */}
           <Link
-            to={isLoggedIn ? "/dashboard" : "/"}
+            to="/"
             className="text-2xl font-black tracking-tighter text-slate-900 flex items-center gap-2 group"
           >
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white scale-90 group-hover:rotate-12 transition-transform">L</div>

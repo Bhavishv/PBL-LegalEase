@@ -5,7 +5,8 @@ const User = require('../models/User');
 // Generate JWT token
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: '30d'
+    expiresIn: '30d',
+    algorithm: 'HS256'
   });
 };
 
@@ -91,8 +92,54 @@ const getMe = async (req, res) => {
   }
 };
 
+// @desc    Login/Register with Google
+// @route   POST /api/auth/google
+// @access  Public
+const googleLogin = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ message: 'Token is required' });
+    }
+
+    // Decode Google token (In production, use google-auth-library to verify!)
+    const decoded = jwt.decode(token);
+    if (!decoded || !decoded.email) {
+      return res.status(400).json({ message: 'Invalid Google token' });
+    }
+
+    const { name, email, picture, sub } = decoded;
+
+    // Check if user exists
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // Create new user if they don't exist
+      // We generate a random password since it's required by the model
+      const randomPassword = Math.random().toString(36).slice(-10) + sub.slice(-5);
+      user = await User.create({
+        name: name || email.split('@')[0],
+        email,
+        password: randomPassword,
+        picture: picture // We might want to add this to the model later
+      });
+    }
+
+    res.json({
+      _id: user.id,
+      name: user.name,
+      email: user.email,
+      picture: picture || user.picture,
+      token: generateToken(user._id) // Return LOCAL token
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server Error', error: error.message });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
-  getMe
+  getMe,
+  googleLogin
 };

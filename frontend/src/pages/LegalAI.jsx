@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Sparkles, Shield, Info, ArrowLeft } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Shield, Info, ArrowLeft, Mic, Volume2, VolumeX } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const LegalAI = () => {
@@ -12,7 +12,82 @@ const LegalAI = () => {
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const messagesEndRef = useRef(null);
+  const recognitionRef = useRef(null);
+
+  // Initialize Speech Recognition
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = "en-US";
+
+      recognitionRef.current.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setInput(transcript);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      alert("Speech recognition is not supported in your browser.");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (err) {
+        console.error("Failed to start recognition:", err);
+      }
+    }
+  };
+
+  const speak = (text) => {
+    if (!isVoiceEnabled) return;
+    window.speechSynthesis.cancel();
+    
+    // Correct pronunciation for the Indian Contract Act year
+    let processedText = text.replace(/1872/g, "eighteen seventy-two");
+    
+    // Ensure we have something to say
+    if (processedText.trim() === "eighteen seventy-two") {
+      processedText = "This refers to the Indian Contract Act, eighteen seventy-two.";
+    }
+
+    const utterance = new SpeechSynthesisUtterance(processedText);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.lang = "en-US";
+
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => 
+      (v.name.includes("Google") || v.name.includes("Female") || v.name.includes("Natural")) && 
+      v.lang.startsWith("en")
+    );
+    if (preferredVoice) utterance.voice = preferredVoice;
+
+    window.speechSynthesis.speak(utterance);
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -23,7 +98,7 @@ const LegalAI = () => {
   }, [messages]);
 
   const handleSend = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!input.trim()) return;
 
     const userMessage = {
@@ -38,7 +113,6 @@ const LegalAI = () => {
     setIsTyping(true);
 
     try {
-      // Create chat history for the AI
       const history = messages.map(m => ({
         role: m.role,
         text: m.content
@@ -55,21 +129,25 @@ const LegalAI = () => {
       });
 
       const data = await response.json();
+      const botContent = data.reply || "I'm sorry, I couldn't process that request.";
 
       const assistantMessage = {
         role: 'assistant',
-        content: data.reply || "I'm sorry, I couldn't process that request.",
+        content: botContent,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, assistantMessage]);
+      speak(botContent);
     } catch (error) {
       console.error("Chat API Error:", error);
+      const errorContent = "Error: Could not reach the AI service. Please make sure the backend is running.";
       const errorMessage = {
         role: 'assistant',
-        content: "Error: Could not reach the AI service. Please make sure the backend is running.",
+        content: errorContent,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, errorMessage]);
+      speak(errorContent);
     } finally {
       setIsTyping(false);
     }
@@ -92,8 +170,20 @@ const LegalAI = () => {
               <p className="text-sm text-slate-500">Your intelligent legal companion</p>
             </div>
           </div>
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold border border-blue-100 uppercase tracking-wider">
-            <Shield className="w-3.5 h-3.5" /> Secure AI Analysis
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => {
+                setIsVoiceEnabled(!isVoiceEnabled);
+                if (isVoiceEnabled) window.speechSynthesis.cancel();
+              }}
+              className={`p-2.5 rounded-xl transition-all border ${isVoiceEnabled ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600'}`}
+              title={isVoiceEnabled ? "Disable Voice Output" : "Enable Voice Output"}
+            >
+              {isVoiceEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+            </button>
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold border border-blue-100 uppercase tracking-wider">
+              <Shield className="w-3.5 h-3.5" /> Secure AI Analysis
+            </div>
           </div>
         </div>
 
@@ -164,18 +254,28 @@ const LegalAI = () => {
             onSubmit={handleSend}
             className="p-4 md:p-6 bg-white border-t border-slate-100 relative group"
           >
-            <div className="relative flex items-center">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask about a clause, legal term, or contract advice..."
-                className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-2xl px-5 py-4 pr-14 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400 shadow-inner"
-              />
+            <div className="relative flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={isListening ? "Listening..." : "Ask about a clause, legal term, or advice..."}
+                  className={`w-full border text-slate-800 text-sm rounded-2xl px-5 py-4 pr-12 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-slate-400 shadow-inner ${isListening ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200 focus:border-blue-500'}`}
+                />
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl transition-all ${isListening ? 'bg-rose-100 text-rose-600 animate-pulse' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}
+                  title="Voice Input"
+                >
+                  <Mic className="w-5 h-5" />
+                </button>
+              </div>
               <button
                 type="submit"
                 disabled={!input.trim() || isTyping}
-                className={`absolute right-2 p-2.5 rounded-xl transition-all ${
+                className={`p-4 rounded-2xl transition-all shrink-0 ${
                   input.trim() && !isTyping 
                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 hover:bg-blue-700' 
                     : 'bg-slate-200 text-slate-400 cursor-not-allowed'
