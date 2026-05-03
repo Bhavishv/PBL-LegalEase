@@ -7,46 +7,68 @@
   const FAB_ID = "legalease-awareness-fab";
   const MAX_LEN = 500000;
 
-  function sanitize(raw) {
-    if (!raw || typeof raw !== "string") return "";
-    let t = raw.replace(/\u00a0/g, " ");
-    t = t.replace(/[ \t\f\v\r]+/g, " ").replace(/\n{3,}/g, "\n\n");
-    return t.trim().slice(0, MAX_LEN);
-  }
+  function extractLegalText() {
+    // 1. Clones the document
+    const documentClone = document.cloneNode(true);
+    
+    // 2. Removes noise elements more aggressively
+    const noiseSelectors = [
+      'header', 'footer', 'nav', 'aside', 'script', 'style', 'noscript', 'iframe', 'svg',
+      '[role="banner"]', '[role="contentinfo"]', '[role="navigation"]',
+      '.header', '.footer', '.sidebar', '#header', '#footer', '.nav'
+    ];
+    noiseSelectors.forEach(selector => {
+      try {
+        const elements = documentClone.querySelectorAll(selector);
+        elements.forEach(el => el.remove());
+      } catch (e) {} // ignore invalid selectors
+    });
 
-  function extractMainContent() {
+    let text = "";
+
     try {
-      // Step 1: Check if Readability is loaded
+      // 3. Applies Readability
       if (typeof Readability !== 'undefined') {
-        const documentClone = document.cloneNode(true);
         const reader = new Readability(documentClone);
         const article = reader.parse();
         
         if (article && article.content) {
-          // Parse the clean HTML returned by Readability
+          // Parse the clean HTML to preserve paragraph breaks!
           const tempDiv = document.createElement("div");
           tempDiv.innerHTML = article.content;
           
-          // Clause splitting: Ensure block elements are separated by newlines
-          const blockTags = ['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+          const blockTags = ['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BR'];
           blockTags.forEach(tag => {
             const elements = tempDiv.getElementsByTagName(tag);
             for (let el of elements) {
               el.appendChild(document.createTextNode('\n\n'));
             }
           });
-          
-          // Step 3: Light text cleaning
-          return sanitize(tempDiv.innerText || tempDiv.textContent || "");
+          text = tempDiv.innerText || tempDiv.textContent || "";
         }
       }
-      
-      // Fallback to basic raw extraction
-      return sanitize(document.body?.innerText || document.documentElement?.innerText || "");
-    } catch (err) {
-      console.warn("LegalEase: Readability extraction failed. Falling back to basic extraction.", err);
-      return sanitize(document.body?.innerText || document.documentElement?.innerText || "");
+    } catch (e) {
+      console.warn("LegalEase: Readability failed", e);
     }
+
+    // 5. Fallback
+    if (!text || text.trim() === "") {
+      text = document.body?.innerText || document.documentElement?.innerText || "";
+    }
+
+    // 6. Clean text
+    text = text
+      .replace(/\u00a0/g, ' ')
+      .replace(/[ \t\f\v\r]+/g, ' ') // Normalize horizontal spaces
+      .replace(/\n\s*\n\s*\n+/g, '\n\n') // Remove excessive newlines, keep max 2
+      .trim();
+
+    // 7. Split into clauses (Split by paragraph breaks, NOT every space!)
+    // A legal clause is typically a paragraph.
+    const clauses = text.split(/\n\n+/).map(c => c.trim()).filter(c => c.length > 20);
+
+    // 8. Return
+    return { text, clauses };
   }
 
   function pageLooksLikeLegalDoc() {
@@ -97,7 +119,7 @@
 
     btn.addEventListener("click", () => {
       // Step 2 & 5: Hybrid Extraction and Integration with existing flow
-      const text = extractMainContent();
+      const { text } = extractLegalText();
       
       if (!text || text.length < 80) {
         alert(
@@ -149,17 +171,26 @@
   window.setTimeout(maybeMountHint, 2200);
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg?.type !== "GET_PAGE_TEXT") return;
-    
-    // Step 2 & 5: Hybrid Extraction and Integration with existing flow
-    const text = extractMainContent();
-    
-    sendResponse({
-      ok: true,
-      text: text,
-      title: document.title || "",
-      url: location.href,
-    });
-    return true;
+    if (msg?.action === "EXTRACT") {
+      const { text, clauses } = extractLegalText();
+      chrome.runtime.sendMessage({
+        type: "EXTRACTED_TEXT",
+        text,
+        clauses
+      });
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    if (msg?.type === "GET_PAGE_TEXT") {
+      const { text } = extractLegalText();
+      sendResponse({
+        ok: true,
+        text: text,
+        title: document.title || "",
+        url: location.href,
+      });
+      return true;
+    }
   });
 })();

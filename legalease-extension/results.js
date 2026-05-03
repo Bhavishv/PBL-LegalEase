@@ -23,6 +23,13 @@ function scoreColor(score) {
   return "linear-gradient(135deg, #10b981 0%, #047857 100%)";
 }
 
+function scoreLabelInfo(score) {
+  const s = Number(score) || 0;
+  if (s >= 85) return { emoji: "✅", text: "Looks Good", desc: "This agreement appears fair and balanced." };
+  if (s >= 60) return { emoji: "⚠️", text: "Review Carefully", desc: "Some clauses need your attention before accepting." };
+  return { emoji: "🚫", text: "High Risk", desc: "Serious risks found. Do not accept without review." };
+}
+
 function escapeHtml(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -53,6 +60,7 @@ function renderCard(data) {
 
   const traps = data.trap_chains || [];
   const colors = labelColor(label);
+  const info = scoreLabelInfo(score);
 
   let trapHtml = traps.length === 0
       ? `<p style="margin:0;font-size:0.95rem;color:#64748b;font-style:italic;">No trap chains flagged.</p>`
@@ -67,9 +75,19 @@ function renderCard(data) {
           ).join("")}</ul>`;
 
   mount.innerHTML = `
-      <div class="score-row">
-        <div class="score-circle" style="background: ${scoreColor(score)}">${escapeHtml(score)}</div>
-        <span class="pill" style="background:${colors.bg}; color:${colors.text}">${escapeHtml(label)}</span>
+      <div style="display: flex; align-items: center; gap: 20px; background: ${colors.bg}; padding: 24px; border-radius: 16px; margin-bottom: 30px; border: 1px solid ${colors.text}40;">
+        <div style="width: 90px; height: 90px; border-radius: 50%; background: ${scoreColor(score)}; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; flex-shrink: 0; box-shadow: 0 8px 16px rgba(0,0,0,0.1);">
+          <span style="font-size: 2.2rem; font-weight: 800; line-height: 1;">${escapeHtml(score)}</span>
+          <span style="font-size: 0.8rem; font-weight: 700; opacity: 0.9;">/ 100</span>
+        </div>
+        <div style="flex: 1;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span style="font-size: 1.5rem;">${info.emoji}</span>
+            <h2 style="margin: 0; font-size: 1.4rem; font-weight: 800; color: ${colors.text};">${escapeHtml(info.text)}</h2>
+          </div>
+          <p style="margin: 0; font-size: 0.95rem; font-weight: 600; color: ${colors.text}; opacity: 0.9;">${escapeHtml(info.desc)}</p>
+          <span style="display: inline-block; margin-top: 8px; padding: 4px 10px; background: white; border-radius: 999px; font-size: 0.75rem; font-weight: 700; color: ${colors.text}; text-transform: uppercase; letter-spacing: 0.05em;">${escapeHtml(label)}</span>
+        </div>
       </div>
 
       ${summary ? `<section>

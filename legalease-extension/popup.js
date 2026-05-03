@@ -40,25 +40,28 @@ async function getActiveTabExtract() {
   }
 
   return new Promise((resolve, reject) => {
-    chrome.tabs.sendMessage(
-      tab.id,
-      { type: "GET_PAGE_TEXT" },
-      async (resp) => {
-        if (chrome.runtime.lastError) {
-          try {
-            resolve(await injectExtractFallback(tab.id));
-          } catch (e) {
-            reject(e);
-          }
-          return;
-        }
+    // Listen for the extraction result
+    const listener = (msg) => {
+      if (msg?.type === "EXTRACTED_TEXT") {
+        chrome.runtime.onMessage.removeListener(listener);
         resolve({
-          text: resp?.text || "",
-          title: resp?.title || tab.title || "",
-          url: resp?.url || u,
+          text: msg.text,
+          clauses: msg.clauses,
+          title: tab.title || "",
+          url: u,
         });
       }
-    );
+    };
+    chrome.runtime.onMessage.addListener(listener);
+
+    // Step 5: Send message { action: "EXTRACT" }
+    chrome.tabs.sendMessage(tab.id, { action: "EXTRACT" }, (resp) => {
+      if (chrome.runtime.lastError) {
+        // Fallback if content script is missing or fails
+        chrome.runtime.onMessage.removeListener(listener);
+        injectExtractFallback(tab.id).then(resolve).catch(reject);
+      }
+    });
   });
 }
 
