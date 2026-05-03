@@ -11,6 +11,8 @@ coverage/
 
 *.pdf
 *.docx
+*.pptx
+*.txt
 
 # Python
 __pycache__/
