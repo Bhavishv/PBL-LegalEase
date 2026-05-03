@@ -7,6 +7,7 @@ Endpoints:
   GET  /                    → health check
   POST /api/analyze         → full contract analysis (upload file)
   POST /api/analyze-text    → full contract analysis (raw text JSON)
+  POST /api/analyze-url     → fetch webpage T&Cs/policy URL → full pipeline
   POST /api/chat            → conversational Q&A about a contract
 
 Decision Intelligence Pipeline (10 steps):
@@ -24,11 +25,16 @@ Decision Intelligence Pipeline (10 steps):
 
 import os
 import uuid
+from urllib.parse import urlparse
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
+from webpage_extractor import extract_text_from_url
+import requests
+
 
 load_dotenv()  # loads GEMINI_API_KEY and other vars from .env
 
@@ -139,6 +145,9 @@ class AnalysisResponse(BaseModel):
 class TextRequest(BaseModel):
     text: str
     filename: Optional[str] = "contract.txt"
+
+class UrlRequest(BaseModel):
+    url: str
 
 
 # ── Mistral AI Summary Generator ──────────────────────────────────────────────
@@ -504,6 +513,40 @@ def analyze_text(body: TextRequest):
     if not body.text.strip():
         raise HTTPException(status_code=400, detail="Text body is empty.")
     return _run_pipeline(body.text, body.filename or "contract.txt")
+
+
+def _validate_http_url(url: str) -> str:
+    u = url.strip()
+    parsed = urlparse(u)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
+    if not parsed.netloc:
+        raise HTTPException(status_code=400, detail="Invalid URL.")
+    return u
+
+
+@app.post("/api/analyze-url", response_model=AnalysisResponse)
+async def analyze_url(request: UrlRequest):
+    """Fetch a webpage (Terms, Privacy Policy), extract text, run the full Decision Intelligence pipeline."""
+    url = _validate_http_url(request.url)
+    try:
+        text = extract_text_from_url(url)
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=408, detail="Request timed out while fetching the URL.")
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e!s}")
+
+    if not text or len(text.strip()) < 100:
+        raise HTTPException(
+            status_code=422,
+            detail="Could not extract enough readable text from this page.",
+        )
+
+    parsed = urlparse(url)
+    display = parsed.path or "/"
+    filename = f"web:{parsed.netloc}{display}"[:200]
+
+    return _run_pipeline(text, filename)
 
 
 # ── Chat endpoint (Mistral — General Legal Assistant) ─────────────────────────

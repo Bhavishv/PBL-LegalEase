@@ -39,6 +39,28 @@ export const analyzeText = async (text, filename = "contract.txt") => {
 };
 
 /**
+ * Fetch webpage HTML, extract visible text server-side, and run the full analysis pipeline.
+ */
+export const analyzeUrl = async (url) => {
+  const response = await fetch("/api/analyze-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    let msg = err.detail;
+    if (Array.isArray(msg)) {
+      msg = msg.map((e) => e.msg || JSON.stringify(e)).join("; ");
+    }
+    throw new Error(msg || `Server error: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+/**
  * Send a general legal question to the Mistral-powered chatbot.
  * This is NOT contract-specific — it answers general legal opinions.
  */

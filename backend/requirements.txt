@@ -14,3 +14,6 @@ google-genai>=0.7.0
 python-dotenv>=1.0.0
 pillow>=10.3.0
 pytesseract>=0.3.10
+beautifulsoup4>=4.12.3
+readability-lxml>=0.8.1
+lxml>=5.0.0

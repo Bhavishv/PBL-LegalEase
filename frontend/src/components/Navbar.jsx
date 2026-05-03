@@ -3,8 +3,19 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 // Auth pages where we show minimal nav (sign in / sign up)
 const AUTH_PAGES = ["/signin", "/signup"];
 
-// Pages that belong to authenticated users
-const APP_PAGES = ["/dashboard", "/analysis", "/version-compare", "/vault"];
+// Pages that belong to authenticated users (used for toolbar + branding)
+const APP_PAGES = [
+  "/dashboard",
+  "/download",
+  "/dashboard/extension",
+  "/analyze-website",
+  "/analysis",
+  "/version-compare",
+  "/vault",
+];
+
+/** Short URL for browser-extension ZIP page (legacy: `/dashboard/extension` also works) */
+const LEGALEASE_DOWNLOAD_PATH = "/download";
 
 function Navbar() {
   const location = useLocation();
@@ -57,15 +68,27 @@ function Navbar() {
           </Link>
 
           {/* Navigation links */}
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-1 sm:gap-2 max-w-[calc(100%-8rem)] sm:max-w-none">
 
             {isAppPage ? (
               /* ── Authenticated App Nav ── */
               <>  
-                <NavLink to="/dashboard"      label="Dashboard"    current={location.pathname} />
-                <NavLink to="/vault"          label="Contract Vault" current={location.pathname} />
+                <NavLink to="/dashboard" label="Dashboard" current={location.pathname} />
+                <NavLink
+                  to={LEGALEASE_DOWNLOAD_PATH}
+                  label="Download"
+                  current={location.pathname}
+                  alternateActivePaths={["/dashboard/extension"]}
+                />
+                <NavLink to="/analyze-website" label="Website" current={location.pathname} />
+                <NavLink
+                  to="/vault"
+                  label="Vault"
+                  current={location.pathname}
+                  title="Contract Vault"
+                />
 
-                <span className="text-slate-300 mx-1 hidden sm:inline">|</span>
+                <span className="text-slate-300 mx-1 hidden lg:inline">|</span>
 
                 <button
                   type="button"
@@ -102,13 +125,25 @@ function Navbar() {
 }
 
 /** Helper — single nav link with active underline */
-function NavLink({ to, label, current }) {
-  const isActive = current === to || (to !== "/" && current.startsWith(to));
+function NavLink({ to, label, current, title, alternateActivePaths = [] }) {
+  const alsoActive = alternateActivePaths.includes(current);
+
+  // `/dashboard` must not stay active on `/dashboard/extension` or child paths (substring match).
+  const isActive =
+    alsoActive ||
+    current === to ||
+    (to !== "/" &&
+      to !== "/dashboard" &&
+      (current.startsWith(`${to}/`) || current.startsWith(`${to}?`)));
+
+  const dashboardActive = to === "/dashboard" && current === "/dashboard";
+
   return (
     <Link
       to={to}
-      className={`text-sm font-medium px-3 py-1.5 rounded-lg transition-all duration-200 ${
-        isActive
+      title={title}
+      className={`text-sm font-medium px-2.5 sm:px-3 py-1.5 rounded-lg transition-all duration-200 whitespace-nowrap ${
+        isActive || dashboardActive
           ? "text-blue-700 bg-blue-50 font-semibold"
           : "text-slate-600 hover:text-blue-600 hover:bg-slate-50"
       }`}

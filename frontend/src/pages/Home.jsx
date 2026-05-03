@@ -46,6 +46,17 @@ const FEATURES = [
     bg: "bg-amber-50 text-amber-600"
   },
   {
+    title: "Real-Time Extension Analysis",
+    description: "Scan Terms & Conditions and Privacy Policies instantly while browsing any website.",
+    icon: (
+      <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+      </svg>
+    ),
+    color: "from-teal-400 to-cyan-500",
+    bg: "bg-teal-50 text-teal-600"
+  },
+  {
     title: "Multilingual Support",
     description: "Translate explanations into multiple languages seamlessly.",
     icon: (

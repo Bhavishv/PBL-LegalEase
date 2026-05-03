@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LegalEase</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      width: 320px;
+      margin: 0;
+      padding: 24px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      color: #0f172a;
+      background: #ffffff;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .header svg {
+      width: 44px;
+      height: 44px;
+      color: #0d9488;
+      margin-bottom: 10px;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 800;
+      margin: 0 0 6px 0;
+      background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p.sub {
+      margin: 0;
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.5;
+      text-align: center;
+    }
+    button.primary {
+      width: 100%;
+      padding: 14px;
+      margin-top: 24px;
+      border: none;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      color: #fff;
+      background: linear-gradient(135deg, #0d9488 0%, #4f46e5 100%);
+      box-shadow: 0 6px 16px rgba(13, 148, 136, 0.25);
+      transition: all 0.2s ease;
+    }
+    button.primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(13, 148, 136, 0.35);
+    }
+    button.primary:disabled {
+      background: #94a3b8;
+      box-shadow: none;
+      cursor: not-allowed;
+      opacity: 0.8;
+      transform: none;
+    }
+    #status {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      text-align: center;
+      font-weight: 500;
+      display: none;
+    }
+    #status.error { display: block; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    #status.wait { display: block; background: #eef2ff; color: #4f46e5; border: 1px solid #c7d2fe; }
+    #status.idle { display: none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+    </svg>
+    <h1>LegalEase</h1>
+    <p class="sub">Instantly scan this page for hidden risks and trap chains.</p>
+  </div>
+
+  <button type="button" class="primary" id="analyzeBtn">Scan This Page</button>
+  <div id="status" class="idle" role="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
