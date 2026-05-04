@@ -152,7 +152,7 @@ export const postComment = async (commentData) => {
  * Returns { clauses: [...], total_analyzed, contributors, last_updated }
  */
 export const getCrowdIntel = async () => {
-  const response = await fetch("/api/crowd-intel", {
+  const response = await fetch("/api/analysis/crowd-intel", {
     headers: { ...getAuthHeaders() }
   });
   if (!response.ok) throw new Error("Failed to fetch crowd intelligence");

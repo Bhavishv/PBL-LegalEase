@@ -36,6 +36,10 @@ app.add_middleware(
 
 # ── Models ──────────────────────────────────────────────────────────────────
 
+class AnalyzeTextRequest(BaseModel):
+    text: str
+    filename: Optional[str] = "contract.txt"
+
 class RiskObject(BaseModel):
     clause_type: str
     severity: str
@@ -124,6 +128,69 @@ async def analyze_file(files: List[UploadFile] = File(...)):
 
     # 2. Advanced Analysis
     # Convert to format expected by graph-based detector
+    trap_input = [{"index": i, "text": c.text, "type": c.matched_kb_id or "Clause", "risk_level": c.risk_level} for i, c in enumerate(classified)]
+    trap_chain_dicts = detect_trap_chains(trap_input)
+    trap_chains = [TrapChainResult(**t) for t in trap_chain_dicts]
+
+    # 3. Overall Score & Dashboard
+    score, label, colour = compute_risk_score(
+        [{"risk_level": c.risk_level, "confidence": c.confidence} for c in classified],
+        trap_chain_dicts
+    )
+    
+    dashboard = DashboardData(**ai_service.get_risk_dashboard_data(score, classified))
+    jurisdiction = ai_service.analyze_jurisdiction_enhanced(full_text)
+    
+    # 4. Final Polish
+    entities = ai_service.extract_contract_entities(full_text)
+    letter = ai_service.generate_negotiation_letter(main_filename, [
+        {"clause_type": c.id, "explanation": c.explanation} for c in classified if c.risk_level == "high"
+    ])
+
+    return AnalysisResponse(
+        filename=main_filename,
+        overall_score=score,
+        risk_label=label,
+        risk_colour=colour,
+        total_clauses=len(classified),
+        high_risk_count=sum(1 for c in classified if c.risk_level == "high"),
+        warning_count=sum(1 for c in classified if c.risk_level == "warning"),
+        safe_count=sum(1 for c in classified if c.risk_level == "safe"),
+        trap_chains=trap_chains,
+        clauses=classified,
+        dashboard_data=dashboard,
+        jurisdiction_analysis=jurisdiction,
+        negotiation_letter=letter,
+        entities=entities
+    )
+
+@app.post("/api/analyze-text", response_model=AnalysisResponse)
+async def analyze_text(req: AnalyzeTextRequest):
+    full_text = req.text
+    main_filename = req.filename
+    
+    # 1. Pipeline execution
+    clauses_text = segment_clauses(full_text)
+    classified = []
+    for i, txt in enumerate(clauses_text):
+        risk, conf, kb_id = classify_clause(txt)
+        expl = generate_explanation(txt, kb_id, risk)
+        
+        redline = None
+        if risk in ("high", "warning"):
+            redline = ai_service.ask_ai(f"Provide a balanced redline for this {risk} clause: {txt}")
+
+        classified.append(ClauseResult(
+            id=f"c{i}_{uuid.uuid4().hex[:4]}",
+            text=txt,
+            risk_level=risk,
+            confidence=round(conf, 3),
+            explanation=expl,
+            suggested_redline=redline,
+            matched_kb_id=kb_id
+        ))
+
+    # 2. Advanced Analysis
     trap_input = [{"index": i, "text": c.text, "type": c.matched_kb_id or "Clause", "risk_level": c.risk_level} for i, c in enumerate(classified)]
     trap_chain_dicts = detect_trap_chains(trap_input)
     trap_chains = [TrapChainResult(**t) for t in trap_chain_dicts]

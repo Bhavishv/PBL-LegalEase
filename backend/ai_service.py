@@ -71,9 +71,15 @@ class LegalRAG:
 def ask_ai(prompt: str, system_instruction: Optional[str] = None) -> Optional[str]:
     """Primary AI entry point with cross-model fallbacks."""
     sys_prompt = system_instruction or (
-        "You are LegalEase AI, an expert Indian Corporate Lawyer. "
-        "Strictly adhere to Indian Contract Act 1872 and regional context. "
-        "Keep it professional and concise."
+        "You are LegalEase AI, a Senior Indian Corporate Lawyer with 20+ years of expertise. "
+        "Your goal is extreme precision in contract analysis. "
+        "Follow this 'Chain-of-Thought' process for every clause:\n"
+        "1. CORE OBLIGATION: Identify what is being required or promised.\n"
+        "2. LEGAL GROUNDING: Cross-reference with the Indian Contract Act 1872, IPC, or relevant Indian statutes.\n"
+        "3. POWER BALANCE: Determine if the clause is heavily biased towards one party.\n"
+        "4. TRAP DETECTION: Look for predatory language, hidden liabilities, or ambiguous termination triggers.\n"
+        "5. VERDICT: Provide a concise, expert simplified summary and risk assessment.\n"
+        "Strictly adhere to Indian law. Keep the tone professional and grounded."
     )
     
     # Priority 1: Gemini (Best for complex logic)

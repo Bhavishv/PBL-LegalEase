@@ -1,41 +1,41 @@
 Category,Precision,Recall,F1-Score
-Governing Law,0.896,0.703,0.788
-Indemnification,0.911,0.865,0.888
-Limitation of Liability,0.779,0.753,0.766
-Automatic Renewal,0.881,0.816,0.847
-Termination for Convenience,0.874,0.705,0.781
-Exclusivity,0.906,0.824,0.863
-Non-Compete,0.867,0.912,0.889
-Confidentiality,0.848,0.874,0.861
-Force Majeure,0.867,0.877,0.872
-Intellectual Property,0.875,0.846,0.86
-Governing Law,0.917,0.804,0.857
-Indemnification,0.822,0.727,0.772
-Limitation of Liability,0.892,0.905,0.898
-Automatic Renewal,0.943,0.799,0.865
-Termination for Convenience,0.928,0.827,0.875
-Exclusivity,0.899,0.86,0.879
-Non-Compete,0.924,0.801,0.858
-Confidentiality,0.75,0.893,0.816
-Force Majeure,0.934,0.893,0.913
-Intellectual Property,0.94,0.945,0.942
-Governing Law,0.797,0.793,0.795
-Indemnification,0.813,0.805,0.809
-Limitation of Liability,0.82,0.827,0.824
-Automatic Renewal,0.88,0.901,0.89
-Termination for Convenience,0.865,0.916,0.89
-Exclusivity,0.789,0.78,0.785
-Non-Compete,0.929,0.783,0.85
-Confidentiality,0.832,0.934,0.88
-Force Majeure,0.94,0.936,0.938
-Intellectual Property,0.92,0.801,0.856
-Governing Law,0.895,0.931,0.913
-Indemnification,0.887,0.934,0.91
-Limitation of Liability,0.835,0.709,0.767
-Automatic Renewal,0.917,0.751,0.826
-Termination for Convenience,0.855,0.741,0.794
-Exclusivity,0.908,0.868,0.887
-Non-Compete,0.816,0.785,0.8
-Confidentiality,0.926,0.91,0.918
-Force Majeure,0.924,0.921,0.922
-Intellectual Property,0.834,0.742,0.785
+Governing Law,0.833,0.779,0.805
+Indemnification,0.75,0.824,0.785
+Limitation of Liability,0.937,0.784,0.854
+Automatic Renewal,0.947,0.908,0.927
+Termination for Convenience,0.893,0.818,0.854
+Exclusivity,0.937,0.782,0.852
+Non-Compete,0.877,0.934,0.904
+Confidentiality,0.752,0.895,0.817
+Force Majeure,0.756,0.737,0.747
+Intellectual Property,0.814,0.837,0.825
+Governing Law,0.854,0.789,0.82
+Indemnification,0.936,0.704,0.804
+Limitation of Liability,0.807,0.804,0.805
+Automatic Renewal,0.816,0.882,0.848
+Termination for Convenience,0.894,0.893,0.893
+Exclusivity,0.856,0.709,0.775
+Non-Compete,0.806,0.832,0.819
+Confidentiality,0.945,0.769,0.848
+Force Majeure,0.876,0.778,0.824
+Intellectual Property,0.771,0.843,0.805
+Governing Law,0.883,0.857,0.87
+Indemnification,0.86,0.898,0.878
+Limitation of Liability,0.802,0.733,0.766
+Automatic Renewal,0.798,0.94,0.863
+Termination for Convenience,0.776,0.91,0.838
+Exclusivity,0.759,0.92,0.832
+Non-Compete,0.84,0.838,0.839
+Confidentiality,0.874,0.782,0.826
+Force Majeure,0.918,0.716,0.805
+Intellectual Property,0.929,0.731,0.818
+Governing Law,0.842,0.905,0.872
+Indemnification,0.909,0.734,0.812
+Limitation of Liability,0.902,0.751,0.819
+Automatic Renewal,0.941,0.764,0.844
+Termination for Convenience,0.894,0.745,0.813
+Exclusivity,0.782,0.772,0.777
+Non-Compete,0.804,0.808,0.806
+Confidentiality,0.787,0.896,0.838
+Force Majeure,0.814,0.816,0.815
+Intellectual Property,0.879,0.823,0.85

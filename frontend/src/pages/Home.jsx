@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { Sparkles } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Sparkles, Shield, Mail, Phone, MapPin } from "lucide-react";
 
 const FEATURES = [
   {
@@ -83,8 +83,11 @@ const FEATURES = [
 ];
 
 function Home() {
+  const navigate = useNavigate();
   const [bgIndex, setBgIndex] = useState(1);
   const totalBgs = 5;
+
+  const user = JSON.parse(localStorage.getItem("userInfo") || "null");
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -130,16 +133,16 @@ function Home() {
 
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center animate-slide-up [animation-delay:200ms]">
             <Link
-              to="/signup"
+              to={user ? "/dashboard" : "/signup"}
               className="px-10 py-5 text-lg font-black text-white bg-blue-600 rounded-2xl shadow-2xl shadow-blue-500/40 hover:bg-blue-700 hover:scale-105 transition-all active:scale-95"
             >
-              Start Analyzing Free
+              {user ? "Go to Dashboard" : "Start Analyzing Free"}
             </Link>
             <Link
-              to="/signin"
+              to={user ? "/dashboard" : "/signin"}
               className="px-10 py-5 text-lg font-black text-slate-700 bg-white border-2 border-slate-100 rounded-2xl hover:bg-slate-50 hover:border-blue-200 transition-all active:scale-95"
             >
-              Sign In
+              {user ? "View My Scans" : "Sign In"}
             </Link>
           </div>
         </div>
@@ -186,6 +189,75 @@ function Home() {
            </div>
         </div>
       </div>
+      {/* ── Proper Footer ── */}
+      <footer className="bg-white border-t border-slate-100 pt-20 pb-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
+            <div className="col-span-1 md:col-span-1">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black italic">L</div>
+                <span className="text-2xl font-black text-slate-900">LegalEase</span>
+              </div>
+              <p className="text-slate-500 font-medium text-sm leading-relaxed mb-6">
+                Empowering individuals and businesses to understand the fine print using advanced AI orchestration.
+              </p>
+              <div className="flex gap-4">
+                <a href="#" className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-all">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+                  </svg>
+                </a>
+                <a href="#" className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-all">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"></path>
+                  </svg>
+                </a>
+                <a href="#" className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-all">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path>
+                    <rect x="2" y="9" width="4" height="12"></rect>
+                    <circle cx="4" cy="4" r="2"></circle>
+                  </svg>
+                </a>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-black uppercase tracking-widest text-slate-900 mb-6">Product</h4>
+              <ul className="space-y-4">
+                <li><Link to="/analysis" className="text-slate-500 font-bold text-sm hover:text-blue-600">AI Scanner</Link></li>
+                <li><Link to="/legal-ai" className="text-slate-500 font-bold text-sm hover:text-blue-600">Legal Assistant</Link></li>
+                <li><Link to="/glossary" className="text-slate-500 font-bold text-sm hover:text-blue-600">Law Glossary</Link></li>
+                <li><Link to="/premium" className="text-slate-500 font-bold text-sm hover:text-blue-600">Enterprise Pricing</Link></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-black uppercase tracking-widest text-slate-900 mb-6">Company</h4>
+              <ul className="space-y-4">
+                <li><a href="#" className="text-slate-500 font-bold text-sm hover:text-blue-600">About Us</a></li>
+                <li><a href="#" className="text-slate-500 font-bold text-sm hover:text-blue-600">Privacy Policy</a></li>
+                <li><a href="#" className="text-slate-500 font-bold text-sm hover:text-blue-600">Terms of Service</a></li>
+                <li><a href="#" className="text-slate-500 font-bold text-sm hover:text-blue-600">Contact Support</a></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-black uppercase tracking-widest text-slate-900 mb-6">Contact</h4>
+              <ul className="space-y-4">
+                <li className="flex items-center gap-3 text-slate-500 font-bold text-sm"><Mail className="w-4 h-4 text-blue-500" /> support@legalease.ai</li>
+                <li className="flex items-center gap-3 text-slate-500 font-bold text-sm"><Phone className="w-4 h-4 text-blue-500" /> +91 (800) LEGAL-AI</li>
+                <li className="flex items-center gap-3 text-slate-500 font-bold text-sm"><MapPin className="w-4 h-4 text-blue-500" /> Tech Hub, Bengaluru, India</li>
+              </ul>
+            </div>
+          </div>
+          
+          <div className="pt-8 border-t border-slate-50 flex flex-col md:flex-row justify-between items-center gap-4">
+            <p className="text-xs font-bold text-slate-400">© 2026 LegalEase AI. All rights reserved.</p>
+            <p className="text-xs font-bold text-slate-300">Built with ❤️ for Indian Contract Act Compliance</p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
