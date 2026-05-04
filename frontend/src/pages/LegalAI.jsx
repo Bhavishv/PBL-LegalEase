@@ -122,9 +122,9 @@ const LegalAI = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          contract_id: "general",
           contract_text: "General Legal Context: You are a legal education assistant. Provide accurate general legal information.",
-          query: input,
-          history: history
+          query: input
         })
       });
 

@@ -1,15 +1,44 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { getCrowdIntel } from "../services/api";
+import { getCrowdIntel, addToPlaybook, flagClause } from "../services/api";
 
 const TREND_BADGES = {
-  spiking: { label: "📈 Spiking", cls: "text-rose-700 bg-rose-100 border-rose-200" },
-  constant: { label: "📊 Constant", cls: "text-blue-700 bg-blue-100 border-blue-200" },
-  declining: { label: "📉 Declining", cls: "text-emerald-700 bg-emerald-100 border-emerald-200" },
+  spiking: { label: " Spiking", cls: "text-rose-700 bg-rose-100 border-rose-200" },
+  constant: { label: " Constant", cls: "text-blue-700 bg-blue-100 border-blue-200" },
+  declining: { label: " Declining", cls: "text-emerald-700 bg-emerald-100 border-emerald-200" },
 };
 
 function ClauseCard({ clause, idx }) {
   const trend = TREND_BADGES[clause.trend] || TREND_BADGES.constant;
+
+  const handleFlag = async () => {
+    try {
+      await flagClause({ 
+        contractId: clause.id, 
+        title: clause.title,
+        reason: "Market trend flag from Crowd Intel Hub" 
+      });
+      alert(`Flagged "${clause.title}" for legal review. Our team will verify this trend.`);
+    } catch (err) {
+      alert("Failed to flag clause: " + err.message);
+    }
+  };
+
+  const handleAddToPlaybook = async () => {
+    try {
+      await addToPlaybook({
+        title: clause.title,
+        category: clause.category,
+        industry: clause.industry,
+        snippet: clause.snippet,
+        aiInsight: clause.aiInsight,
+        sourceContractId: clause.id
+      });
+      alert(`Added "${clause.title}" to your Negotiation Playbook!`);
+    } catch (err) {
+      alert("Failed to add to playbook: " + err.message);
+    }
+  };
 
   return (
     <div
@@ -95,8 +124,18 @@ function ClauseCard({ clause, idx }) {
         </div>
 
         <div className="mt-5 flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-200/60">
-           <button className="flex-1 px-4 py-3 sm:py-2 bg-white border border-slate-200 rounded-xl text-xs font-black uppercase text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-all">Flag for Review</button>
-           <button className="flex-1 px-4 py-3 sm:py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase shadow-lg hover:bg-indigo-700 transition-all">Add to Playbook</button>
+           <button 
+            onClick={handleFlag}
+            className="flex-1 px-4 py-3 sm:py-2 bg-white border border-slate-200 rounded-xl text-xs font-black uppercase text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-all"
+           >
+            Flag for Review
+           </button>
+           <button 
+            onClick={handleAddToPlaybook}
+            className="flex-1 px-4 py-3 sm:py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase shadow-lg hover:bg-indigo-700 transition-all"
+           >
+            Add to Playbook
+           </button>
         </div>
       </div>
     </div>
@@ -200,7 +239,7 @@ function CrowdIntel() {
               onClick={handleContribute}
               className={`w-full py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${contributed ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
             >
-              {contributed ? "✓ Data Sync Complete" : "Contribute Data"}
+               {contributed ? "✓ Data Sync Complete" : "Contribute Data"}
             </button>
          </div>
       </div>

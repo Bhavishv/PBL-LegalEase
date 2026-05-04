@@ -228,9 +228,10 @@ async def analyze_text(req: AnalyzeTextRequest):
     )
 
 class ChatRequest(BaseModel):
-    contract_id: str
+    contract_id: Optional[str] = "general"
     contract_text: str
     query: str
+    history: Optional[List[dict]] = []
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
@@ -248,14 +249,20 @@ async def compare(req: CompareRequest):
 
 @app.websocket("/ws/negotiate/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
+    print(f"WebSocket connection request for room: {room_id}")
     await socket_manager.connect(room_id, websocket)
     try:
         while True:
             data = await websocket.receive_text()
+            print(f"Received message in room {room_id}: {data[:50]}...")
             message = json.loads(data)
             await socket_manager.broadcast(room_id, message, websocket)
     except WebSocketDisconnect:
-        socket_manager.disconnect(room_id, websocket)
+        print(f"WebSocket disconnected from room: {room_id}")
+        await socket_manager.disconnect(room_id, websocket)
+    except Exception as e:
+        print(f"WebSocket error in room {room_id}: {e}")
+        await socket_manager.disconnect(room_id, websocket)
 
 # ── Blockchain & Feedback ──────────────────────────────────────────────────
 
@@ -280,4 +287,5 @@ async def save_feedback(req: FeedbackRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Use string reference and reload=True for development
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

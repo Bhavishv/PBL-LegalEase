@@ -64,7 +64,7 @@ class LegalRAG:
                 return []
         
         docs = self.vector_store.similarity_search_with_relevance_scores(user_query, k=k)
-        return [{"text": d[0].page_content, "score": d[1], "metadata": d[0].metadata} for d in docs]
+        return [{"text": d[0].page_content, "score": float(d[1]), "metadata": d[0].metadata} for d in docs]
 
 # ── 2. AI CORE & FALLBACKS ──────────────────────────────────────────────────
 

@@ -173,4 +173,30 @@ export const sendChatMessage = async ({ contract_text, history, query }) => {
   });
   if (!response.ok) throw new Error("Chat request failed");
   return response.json();
+};
+
+export const addToPlaybook = async (clauseData) => {
+  const response = await fetch("/api/analysis/playbook/add", {
+    method: "POST",
+    headers: { 
+      "Content-Type": "application/json",
+      ...getAuthHeaders()
+    },
+    body: JSON.stringify(clauseData),
+  });
+  if (!response.ok) throw new Error("Failed to add to playbook");
+  return response.json();
+};
+
+export const flagClause = async (flagData) => {
+  const response = await fetch("/api/analysis/flag/add", {
+    method: "POST",
+    headers: { 
+      "Content-Type": "application/json",
+      ...getAuthHeaders()
+    },
+    body: JSON.stringify(flagData),
+  });
+  if (!response.ok) throw new Error("Failed to flag clause");
+  return response.json();
 };

@@ -28,9 +28,22 @@ class NegotiationManager:
             "data": self.room_state[room_id]
         })
 
-    def disconnect(self, room_id: str, websocket: WebSocket):
+        # Broadcast user count
+        await self.broadcast_room_info(room_id)
+
+    async def disconnect(self, room_id: str, websocket: WebSocket):
         if room_id in self.active_connections:
             self.active_connections[room_id].remove(websocket)
+            await self.broadcast_room_info(room_id)
+
+    async def broadcast_room_info(self, room_id: str):
+        count = len(self.active_connections.get(room_id, []))
+        message = {"type": "ROOM_INFO", "data": {"user_count": count}}
+        for connection in self.active_connections.get(room_id, []):
+            try:
+                await connection.send_json(message)
+            except:
+                pass
 
     async def broadcast(self, room_id: str, message: dict, sender: WebSocket):
         """

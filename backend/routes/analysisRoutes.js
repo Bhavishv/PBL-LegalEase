@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Contract = require('../models/Contract');
+const Playbook = require('../models/Playbook');
+const Flag = require('../models/Flag');
 const { protect } = require('../middleware/authMiddleware');
 
 // @route   POST /api/analysis/save
@@ -88,18 +90,23 @@ router.get('/crowd-intel', async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(10);
 
-    const formattedClauses = trendingContracts.map(c => {
+    const formattedClauses = trendingContracts.map((c, idx) => {
        const highRisk = c.clauses.find(cl => cl.risk_level === 'high') || c.clauses[0];
+       // Deterministic industry based on filename or type
+       const industryIdx = (c.filename.length + idx) % industries.length;
+       const industry = c.type || industries[industryIdx];
+       
        return {
           id: c._id,
           title: c.filename,
           category: highRisk.risk_level === 'high' ? "High Risk" : "Warning",
-          industry: industries[Math.floor(Math.random() * industries.length)],
+          industry: industry,
           snippet: highRisk.text.substring(0, 150) + "...",
-          rejectionRate: Math.floor(Math.random() * 15) + 80, 
-          renegotiationSuccess: Math.floor(Math.random() * 20) + 65,
-          userCount: Math.floor(Math.random() * 500) + 100,
-          trend: "spiking",
+          // Deterministic but realistic metrics
+          rejectionRate: 80 + (idx % 15), 
+          renegotiationSuccess: 65 + (idx % 20),
+          userCount: 100 + (idx * 50),
+          trend: idx % 3 === 0 ? "spiking" : "constant",
           aiInsight: highRisk.explanation
        };
     });
@@ -112,6 +119,61 @@ router.get('/crowd-intel', async (req, res) => {
       industry_exposure: exposure,
       clauses: formattedClauses.length > 0 ? formattedClauses : []
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @route   POST /api/analysis/playbook/add
+// @desc    Add a clause to the user's playbook
+// @access  Private
+router.post('/playbook/add', protect, async (req, res) => {
+  try {
+    const { title, category, industry, snippet, aiInsight, sourceContractId } = req.body;
+    
+    const entry = await Playbook.create({
+      userId: req.user._id,
+      title,
+      category,
+      industry,
+      snippet,
+      aiInsight,
+      sourceContractId
+    });
+
+    res.status(201).json(entry);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @route   GET /api/analysis/playbook
+// @desc    Get user's playbook entries
+// @access  Private
+router.get('/playbook', protect, async (req, res) => {
+  try {
+    const entries = await Playbook.find({ userId: req.user._id }).sort({ createdAt: -1 });
+    res.json(entries);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @route   POST /api/analysis/flag/add
+// @desc    Flag a clause for review
+// @access  Private
+router.post('/flag/add', protect, async (req, res) => {
+  try {
+    const { contractId, title, reason } = req.body;
+    
+    const flag = await Flag.create({
+      userId: req.user._id,
+      contractId,
+      title,
+      reason
+    });
+
+    res.status(201).json(flag);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
